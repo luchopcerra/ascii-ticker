@@ -95,6 +95,8 @@ curl http://localhost:8787/btc
 
 Wrangler will print the local URL, usually `http://localhost:8787`.
 
+See `CONTRIBUTING.md` for contribution guidelines, verification commands, and project structure notes.
+
 ## Deploy to Cloudflare Workers
 
 ```sh
@@ -106,10 +108,18 @@ After deploy, Cloudflare will print the public Worker URL.
 
 ## Configuration
 
-Environment variables:
+Worker bindings in `wrangler.jsonc`:
 
 - `CACHE_TTL_MS`: in-memory cache TTL. Default: `30000`.
 - `COINGECKO_API_URL`: upstream API base URL. Default: `https://api.coingecko.com/api/v3`.
+
+## Security
+
+Please report suspected vulnerabilities privately. See `SECURITY.md` for details.
+
+## License
+
+MIT. See `LICENSE`.
 
 ## Notes
 

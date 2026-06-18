@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "ASCII market ticker for realtime crypto and digital asset prices over HTTP.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luchopcerra/ascii-ticker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/luchopcerra/ascii-ticker/issues"
+  },
+  "homepage": "https://github.com/luchopcerra/ascii-ticker#readme",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
