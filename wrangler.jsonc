@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "crypto-wttr",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-06-18",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "CACHE_TTL_MS": "30000",
+    "COINGECKO_API_URL": "https://api.coingecko.com/api/v3"
+  }
+}
