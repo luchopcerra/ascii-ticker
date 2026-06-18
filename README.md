@@ -12,6 +12,14 @@ curl "https://ascii-ticker.perezcerraluciano.workers.dev?charset=ascii"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/sol?format=json"
 ```
 
+```powershell
+Invoke-WebRequest https://ascii-ticker.perezcerraluciano.workers.dev
+Invoke-WebRequest https://ascii-ticker.perezcerraluciano.workers.dev/btc
+Invoke-WebRequest "https://ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur"
+Invoke-WebRequest "https://ascii-ticker.perezcerraluciano.workers.dev?charset=ascii"
+Invoke-WebRequest "https://ascii-ticker.perezcerraluciano.workers.dev/sol?format=json"
+```
+
 Example single-asset terminal output:
 
 ```text
@@ -34,6 +42,14 @@ curl http://localhost:8787/btc
 curl "http://localhost:8787/eth?currency=eur"
 curl "http://localhost:8787?charset=ascii"
 curl "http://localhost:8787/sol?format=json"
+```
+
+```powershell
+Invoke-WebRequest http://localhost:8787
+Invoke-WebRequest http://localhost:8787/btc
+Invoke-WebRequest "http://localhost:8787/eth?currency=eur"
+Invoke-WebRequest "http://localhost:8787?charset=ascii"
+Invoke-WebRequest "http://localhost:8787/sol?format=json"
 ```
 
 ## Features
