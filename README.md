@@ -3,6 +3,15 @@
 ASCII market ticker for realtime crypto and digital asset prices over HTTP.
 
 ```sh
+curl https://ascii-ticker.perezcerraluciano.workers.dev
+curl https://ascii-ticker.perezcerraluciano.workers.dev/btc
+curl "https://ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev/sol?format=json"
+```
+
+Local development:
+
+```sh
 curl http://localhost:8787
 curl http://localhost:8787/btc
 curl "http://localhost:8787/eth?currency=eur"
@@ -18,6 +27,8 @@ curl "http://localhost:8787/sol?format=json"
 - Currency override with `?currency=usd`, `?currency=eur`, etc.
 
 ## API
+
+Base URL: `https://ascii-ticker.perezcerraluciano.workers.dev`
 
 ### `GET /`
 
