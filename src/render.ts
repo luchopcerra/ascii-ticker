@@ -1,4 +1,4 @@
-import type { MarketPrice } from "./coingecko.js";
+import type { MarketPrice, PriceResult } from "./coingecko.js";
 
 const reset = "\u001b[0m";
 const bold = "\u001b[1m";
@@ -7,7 +7,7 @@ const green = "\u001b[32m";
 const red = "\u001b[31m";
 const cyan = "\u001b[36m";
 
-export function renderTerminal(prices: MarketPrice[], cacheTtlMs = "30000"): string {
+export function renderTerminal(prices: MarketPrice[], cacheTtlMs = "30000", cacheStatus: PriceResult["cacheStatus"] = "fresh"): string {
   const now = new Date().toISOString();
   const rows = prices.map((price) => {
     const changeColor = (price.change24h ?? 0) >= 0 ? green : red;
@@ -24,7 +24,7 @@ export function renderTerminal(prices: MarketPrice[], cacheTtlMs = "30000"): str
 
   return [
     `${bold}${cyan}ascii-ticker${reset} ${dim}live crypto and digital asset prices${reset}`,
-    `${dim}updated ${now} | data: CoinGecko | cache: ${cacheTtlMs}ms${reset}`,
+    `${dim}updated ${now} | data: CoinGecko | cache: ${cacheStatus} (${cacheTtlMs}ms ttl)${reset}`,
     "",
     `${bold}ASSET${reset}  ${bold}${"NAME".padEnd(14)}${reset}  ${bold}${"PRICE".padStart(14)}${reset}  ${bold}${"24H".padStart(9)}${reset}  ${bold}${"VOLUME".padStart(12)}${reset}`,
     ...rows,
@@ -33,8 +33,8 @@ export function renderTerminal(prices: MarketPrice[], cacheTtlMs = "30000"): str
   ].join("\n");
 }
 
-export function renderPlain(prices: MarketPrice[]): string {
-  return stripAnsi(renderTerminal(prices));
+export function renderPlain(prices: MarketPrice[], cacheTtlMs = "30000", cacheStatus: PriceResult["cacheStatus"] = "fresh"): string {
+  return stripAnsi(renderTerminal(prices, cacheTtlMs, cacheStatus));
 }
 
 function formatMoney(value: number, currency: string): string {

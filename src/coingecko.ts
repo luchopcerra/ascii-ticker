@@ -14,6 +14,11 @@ export type MarketPrice = {
   updatedAt: string;
 };
 
+export type PriceResult = {
+  prices: MarketPrice[];
+  cacheStatus: "cached" | "fresh";
+};
+
 type CoinGeckoMarket = {
   id: string;
   symbol: string;
@@ -43,7 +48,7 @@ export async function getPrices(options: {
   requestedAssets?: Asset[];
   currency?: string;
   env?: PriceEnv;
-} = {}): Promise<MarketPrice[]> {
+} = {}): Promise<PriceResult> {
   const requestedAssets = options.requestedAssets?.length ? options.requestedAssets : assets.slice(0, 8);
   const currency = (options.currency ?? "usd").toLowerCase();
   const cacheTtlMs = Number(options.env?.CACHE_TTL_MS ?? 30_000);
@@ -53,7 +58,7 @@ export async function getPrices(options: {
   const cached = cache.get(cacheKey);
 
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.prices;
+    return { prices: cached.prices, cacheStatus: "cached" };
   }
 
   const url = new URL("/api/v3/coins/markets", apiBaseUrl);
@@ -96,5 +101,5 @@ export async function getPrices(options: {
     prices
   });
 
-  return prices;
+  return { prices, cacheStatus: "fresh" };
 }

@@ -29,9 +29,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname === "/api/prices") {
     const currency = url.searchParams.get("currency") ?? "usd";
-    const prices = await getPrices({ currency, env });
+    const { prices, cacheStatus } = await getPrices({ currency, env });
 
-    return json({ currency: currency.toUpperCase(), prices });
+    return json({ currency: currency.toUpperCase(), cacheStatus, prices });
   }
 
   const assetParam = pathAsset(url.pathname);
@@ -46,17 +46,17 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   const currency = url.searchParams.get("currency") ?? "usd";
   const format = url.searchParams.get("format");
-  const prices = await getPrices({
+  const { prices, cacheStatus } = await getPrices({
     requestedAssets: asset ? [asset] : undefined,
     currency,
     env
   });
 
   if (format === "json" || wantsJson(request)) {
-    return json(asset ? prices[0] : { currency: currency.toUpperCase(), prices });
+    return json(asset ? { ...prices[0], cacheStatus } : { currency: currency.toUpperCase(), cacheStatus, prices });
   }
 
-  const body = `${wantsAnsi(request) ? renderTerminal(prices, env.CACHE_TTL_MS) : renderPlain(prices)}\n`;
+  const body = `${wantsAnsi(request) ? renderTerminal(prices, env.CACHE_TTL_MS, cacheStatus) : renderPlain(prices, env.CACHE_TTL_MS, cacheStatus)}\n`;
 
   return new Response(body, { headers: textHeaders() });
 }
