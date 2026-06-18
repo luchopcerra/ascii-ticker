@@ -1,12 +1,29 @@
 # ascii-ticker
 
-ASCII market ticker for realtime crypto and digital asset prices over HTTP.
+Terminal-first market ticker for realtime crypto and digital asset prices over HTTP.
+
+It is built to be used from a shell. The default response is text, with terminal graphics, ANSI color for curl/httpie/wget, 7-day sparklines, and cache freshness metadata.
 
 ```sh
 curl https://ascii-ticker.perezcerraluciano.workers.dev
 curl https://ascii-ticker.perezcerraluciano.workers.dev/btc
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev?charset=ascii"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/sol?format=json"
+```
+
+Example single-asset terminal output:
+
+```text
+┌─ BTC / Bitcoin ───────────────────────────┐
+│ Price      $104,220.11                    │
+│ 24h        ▲ 2.14%                        │
+│ High / Low $105,100.00 / $101,800.00      │
+│ Volume     $42.1B                         │
+│ Source     CoinGecko, fresh, 30000ms ttl  │
+├────────────────────────────────────────────┤
+│ 7d         ▁▂▃▄▅▆▇█▇▆▅▄▅▆▇█              │
+└────────────────────────────────────────────┘
 ```
 
 Local development:
@@ -15,14 +32,18 @@ Local development:
 curl http://localhost:8787
 curl http://localhost:8787/btc
 curl "http://localhost:8787/eth?currency=eur"
+curl "http://localhost:8787?charset=ascii"
 curl "http://localhost:8787/sol?format=json"
 ```
 
 ## Features
 
-- Plain-text output that looks good in a terminal.
+- Terminal-first text output with ANSI color for curl/httpie/wget.
+- Single-asset cards for routes like `/btc`.
+- 7-day sparklines in table and card output.
+- ASCII fallback with `?charset=ascii`.
 - JSON API for apps and scripts.
-- Short in-memory cache to reduce upstream API calls.
+- Short in-memory cache to reduce upstream API calls, with `fresh`/`cached` metadata in responses.
 - Symbol routes like `/btc`, `/eth`, `/sol`, `/usdc`.
 - Currency override with `?currency=usd`, `?currency=eur`, etc.
 
@@ -32,17 +53,24 @@ Base URL: `https://ascii-ticker.perezcerraluciano.workers.dev`
 
 ### `GET /`
 
-Returns a terminal-friendly table for the default tracked assets.
+Returns a terminal-friendly table for the default tracked assets, including 7-day sparklines.
 
 ### `GET /:asset`
 
-Returns one asset by symbol, id, or name.
+Returns one asset by symbol, id, or name as a terminal card by default.
 
 Examples: `/btc`, `/bitcoin`, `/ethereum`, `/sol`.
 
+Useful query parameters:
+
+- `?currency=eur`: render prices in another currency.
+- `?charset=ascii`: use ASCII-only chart and box characters.
+- `?color=never`: disable ANSI color.
+- `?format=json`: return JSON instead of terminal text.
+
 ### `GET /api/prices`
 
-Returns JSON for the default tracked assets.
+Returns JSON for the default tracked assets, including `cacheStatus` and sparkline arrays.
 
 ### `GET /api/assets`
 
