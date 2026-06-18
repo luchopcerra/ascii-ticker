@@ -12,6 +12,7 @@ export type MarketPrice = {
   high24h: number | null;
   low24h: number | null;
   updatedAt: string;
+  sparkline: number[];
 };
 
 export type PriceResult = {
@@ -30,6 +31,9 @@ type CoinGeckoMarket = {
   high_24h: number | null;
   low_24h: number | null;
   last_updated: string;
+  sparkline_in_7d?: {
+    price?: number[];
+  };
 };
 
 type CacheEntry = {
@@ -67,7 +71,7 @@ export async function getPrices(options: {
   url.searchParams.set("order", "market_cap_desc");
   url.searchParams.set("per_page", String(requestedAssets.length));
   url.searchParams.set("page", "1");
-  url.searchParams.set("sparkline", "false");
+  url.searchParams.set("sparkline", "true");
   url.searchParams.set("price_change_percentage", "24h");
 
   const response = await fetch(url, {
@@ -93,7 +97,8 @@ export async function getPrices(options: {
     change24h: market.price_change_percentage_24h,
     high24h: market.high_24h,
     low24h: market.low_24h,
-    updatedAt: market.last_updated
+    updatedAt: market.last_updated,
+    sparkline: market.sparkline_in_7d?.price ?? []
   }));
 
   cache.set(cacheKey, {

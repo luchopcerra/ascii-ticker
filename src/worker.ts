@@ -1,6 +1,6 @@
 import { assets, findAsset } from "./assets.js";
 import { getPrices, type PriceEnv } from "./coingecko.js";
-import { renderPlain, renderTerminal } from "./render.js";
+import { renderAssetPlain, renderAssetTerminal, renderPlain, renderTerminal, type RenderOptions } from "./render.js";
 
 type Env = PriceEnv;
 
@@ -51,12 +51,20 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     currency,
     env
   });
+  const renderOptions: RenderOptions = {
+    ansi: wantsAnsi(request) && url.searchParams.get("color") !== "never",
+    cacheTtlMs: env.CACHE_TTL_MS,
+    cacheStatus,
+    charset: url.searchParams.get("charset") === "ascii" ? "ascii" : "unicode"
+  };
 
   if (format === "json" || wantsJson(request)) {
     return json(asset ? { ...prices[0], cacheStatus } : { currency: currency.toUpperCase(), cacheStatus, prices });
   }
 
-  const body = `${wantsAnsi(request) ? renderTerminal(prices, env.CACHE_TTL_MS, cacheStatus) : renderPlain(prices, env.CACHE_TTL_MS, cacheStatus)}\n`;
+  const body = asset
+    ? `${renderOptions.ansi ? renderAssetTerminal(prices[0], renderOptions) : renderAssetPlain(prices[0], renderOptions)}\n`
+    : `${renderOptions.ansi ? renderTerminal(prices, renderOptions) : renderPlain(prices, renderOptions)}\n`;
 
   return new Response(body, { headers: textHeaders() });
 }
