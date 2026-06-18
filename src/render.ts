@@ -23,13 +23,13 @@ export function renderTerminal(prices: MarketPrice[], cacheTtlMs = "30000"): str
   });
 
   return [
-    `${bold}${cyan}crypto-wttr${reset} ${dim}live crypto and digital asset prices${reset}`,
+    `${bold}${cyan}ascii-ticker${reset} ${dim}live crypto and digital asset prices${reset}`,
     `${dim}updated ${now} | data: CoinGecko | cache: ${cacheTtlMs}ms${reset}`,
     "",
     `${bold}ASSET${reset}  ${bold}${"NAME".padEnd(14)}${reset}  ${bold}${"PRICE".padStart(14)}${reset}  ${bold}${"24H".padStart(9)}${reset}  ${bold}${"VOLUME".padStart(12)}${reset}`,
     ...rows,
     "",
-    `${dim}try: curl localhost:3000/btc | curl localhost:3000/eth?format=json | curl localhost:3000/api/prices${reset}`
+    `${dim}try: curl localhost:8787/btc | curl localhost:8787/eth?format=json | curl localhost:8787/api/prices${reset}`
   ].join("\n");
 }
 

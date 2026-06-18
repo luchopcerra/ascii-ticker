@@ -1,7 +1,7 @@
 {
-  "name": "crypto-wttr",
+  "name": "ascii-ticker",
   "version": "0.1.0",
-  "description": "Terminal-friendly realtime crypto and digital asset prices over HTTP.",
+  "description": "ASCII market ticker for realtime crypto and digital asset prices over HTTP.",
   "license": "MIT",
   "type": "module",
   "scripts": {

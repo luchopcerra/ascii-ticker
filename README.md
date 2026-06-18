@@ -1,12 +1,12 @@
-# crypto-wttr
+# ascii-ticker
 
-Terminal-friendly realtime crypto and digital asset prices over HTTP, inspired by `wttr.in`.
+ASCII market ticker for realtime crypto and digital asset prices over HTTP.
 
 ```sh
-curl http://localhost:3000
-curl http://localhost:3000/btc
-curl "http://localhost:3000/eth?currency=eur"
-curl "http://localhost:3000/sol?format=json"
+curl http://localhost:8787
+curl http://localhost:8787/btc
+curl "http://localhost:8787/eth?currency=eur"
+curl "http://localhost:8787/sol?format=json"
 ```
 
 ## Features
@@ -51,7 +51,7 @@ npm run dev
 Open another terminal:
 
 ```sh
-curl http://localhost:3000/btc
+curl http://localhost:8787/btc
 ```
 
 Wrangler will print the local URL, usually `http://localhost:8787`.

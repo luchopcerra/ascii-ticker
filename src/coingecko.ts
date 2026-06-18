@@ -68,7 +68,7 @@ export async function getPrices(options: {
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "crypto-wttr/0.1"
+      "user-agent": "ascii-ticker/0.1"
     }
   });
 
