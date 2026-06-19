@@ -1,8 +1,25 @@
 import { assets, findAsset } from "./assets.js";
-import { getLeadingIndicators, getPrices, type PriceEnv } from "./coingecko.js";
+import {
+  getLeadingIndicators,
+  getPrices,
+  type LeadingIndicators,
+  type MarketPrice,
+  type PriceEnv,
+  type SocialSentiment,
+  type StablecoinFlow
+} from "./coingecko.js";
 import { renderAssetPlain, renderAssetTerminal, renderPlain, renderTerminal, type RenderOptions } from "./render.js";
 
 type Env = PriceEnv;
+// Avoid division-by-zero when deriving a percent change from tiny sparkline baselines.
+const minPriceBaseline = 1e-10;
+// Heuristic fallback tuning for when optional indicator APIs are not configured:
+// normalize ~10% daily moves into a full sentiment scale, keep ±0.15 near neutral,
+// treat sub-0.5% moves as stable, and weight volume velocity into the flow gauge.
+const sentimentNormalizationFactor = 10;
+const sentimentThreshold = 0.15;
+const stablecoinNeutralThreshold = 0.5;
+const stablecoinVelocityMultiplier = 8;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -51,7 +68,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     currency,
     env
   });
-  const indicators = asset ? await getLeadingIndicators({ asset, env }) : undefined;
+  if (asset && prices.length === 0) {
+    throw new Error(`CoinGecko returned no market data for ${asset.symbol.toUpperCase()}; verify the asset is supported by CoinGecko and the CoinGecko API is available`);
+  }
+  const indicators = asset ? withIndicatorFallbacks(prices[0], await getLeadingIndicators({ asset, env })) : undefined;
   const renderOptions: RenderOptions = {
     ansi: wantsAnsi(request) && url.searchParams.get("color") !== "never",
     cacheTtlMs: env.CACHE_TTL_MS,
@@ -105,4 +125,112 @@ function textHeaders(): HeadersInit {
     "content-type": "text/plain; charset=utf-8",
     "cache-control": "public, max-age=15"
   };
+}
+
+function withIndicatorFallbacks(price: MarketPrice, indicators: LeadingIndicators): LeadingIndicators {
+  return {
+    sentiment: indicators.sentiment.label === "unavailable" ? fallbackSentiment(price) : indicators.sentiment,
+    stablecoinFlow:
+      indicators.stablecoinFlow.label === "unavailable" ? fallbackStablecoinFlow(price) : indicators.stablecoinFlow
+  };
+}
+
+function fallbackSentiment(price: MarketPrice): SocialSentiment {
+  const changeSignal = priceChangeSignal(price);
+
+  if (changeSignal === null) {
+    return {
+      score: null,
+      label: "unavailable",
+      source: "CoinGecko price proxy",
+      updatedAt: price.updatedAt
+    };
+  }
+
+  const score = clamp(changeSignal / sentimentNormalizationFactor, -1, 1);
+
+  return {
+    score,
+    label: sentimentLabel(score),
+    source: "CoinGecko price proxy",
+    updatedAt: price.updatedAt
+  };
+}
+
+function fallbackStablecoinFlow(price: MarketPrice): StablecoinFlow {
+  const changeSignal = priceChangeSignal(price);
+  const tradingVelocity = calculateTradingVelocity(price);
+  const normalizedChange = changeSignal === null ? null : Math.abs(changeSignal) / sentimentNormalizationFactor;
+  const scaledVelocity = tradingVelocity === null ? null : tradingVelocity * stablecoinVelocityMultiplier;
+  const averageRatio = averagePresent([normalizedChange, scaledVelocity]);
+  const ratio = averageRatio === null ? null : clamp(averageRatio, 0, 1);
+  // Volume divided by market cap acts as a simple trading-velocity proxy for flow intensity.
+  // Scale volume by signed daily price change to approximate direction and magnitude of net flow.
+  // `changeSignal` is a percent, so divide by 100 to convert it to a decimal multiplier.
+  const netFlowUsd = price.volume24h === null || changeSignal === null ? null : price.volume24h * (changeSignal / 100);
+
+  return {
+    netFlowUsd,
+    ratio,
+    label: stablecoinLabel(changeSignal),
+    source: "CoinGecko volume proxy",
+    updatedAt: price.updatedAt
+  };
+}
+
+function calculateTradingVelocity(price: MarketPrice): number | null {
+  if (price.volume24h === null || price.marketCap === null || price.marketCap <= 0) {
+    return null;
+  }
+
+  return price.volume24h / price.marketCap;
+}
+
+function priceChangeSignal(price: MarketPrice): number | null {
+  if (price.change24h !== null) {
+    return price.change24h;
+  }
+
+  const start = price.sparkline.find(Number.isFinite);
+  const end = [...price.sparkline].reverse().find(Number.isFinite);
+
+  if (start === undefined || end === undefined || Math.abs(start) < minPriceBaseline) {
+    return null;
+  }
+
+  return ((end - start) / start) * 100;
+}
+
+function sentimentLabel(score: number): SocialSentiment["label"] {
+  if (score > sentimentThreshold) {
+    return "bullish";
+  }
+
+  if (score < -sentimentThreshold) {
+    return "bearish";
+  }
+
+  return "neutral";
+}
+
+function stablecoinLabel(changeSignal: number | null): StablecoinFlow["label"] {
+  if (changeSignal === null || Math.abs(changeSignal) < stablecoinNeutralThreshold) {
+    return "neutral";
+  }
+
+  return changeSignal > 0 ? "inflow" : "outflow";
+}
+
+function averagePresent(values: Array<number | null>): number | null {
+  const present = values.filter((value): value is number => value !== null);
+
+  if (present.length === 0) {
+    return null;
+  }
+
+  return present.reduce((total, value) => total + value, 0) / present.length;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
