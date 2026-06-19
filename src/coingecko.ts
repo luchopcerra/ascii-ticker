@@ -68,7 +68,7 @@ type IndicatorCacheEntry = {
 
 const cache = new Map<string, CacheEntry>();
 const indicatorCache = new Map<string, IndicatorCacheEntry>();
-const indicatorCacheTtlMs = 5 * 60_000;
+const INDICATOR_CACHE_TTL_MS = 5 * 60_000;
 
 export type PriceEnv = {
   CACHE_TTL_MS?: string;
@@ -146,12 +146,7 @@ export async function getLeadingIndicators(options: {
 }): Promise<LeadingIndicators> {
   const sentimentApiUrl = configuredValue(options.env?.SENTIMENT_API_URL);
   const stablecoinFlowApiUrl = configuredValue(options.env?.STABLECOIN_FLOW_API_URL);
-  const cacheKey = [
-    options.asset.id,
-    options.asset.symbol,
-    sentimentApiUrl ?? "sentiment:unconfigured",
-    stablecoinFlowApiUrl ?? "stablecoin-flow:unconfigured"
-  ].join(":");
+  const cacheKey = buildIndicatorCacheKey(options.asset, sentimentApiUrl, stablecoinFlowApiUrl);
   const cached = indicatorCache.get(cacheKey);
 
   if (cached && cached.expiresAt > Date.now()) {
@@ -173,7 +168,7 @@ export async function getLeadingIndicators(options: {
   };
 
   indicatorCache.set(cacheKey, {
-    expiresAt: Date.now() + indicatorCacheTtlMs,
+    expiresAt: Date.now() + INDICATOR_CACHE_TTL_MS,
     indicators
   });
 
@@ -284,6 +279,15 @@ function unavailableStablecoinFlow(): StablecoinFlow {
 
 function settledValue<T>(result: PromiseSettledResult<T>, fallback: T): T {
   return result.status === "fulfilled" ? result.value : fallback;
+}
+
+function buildIndicatorCacheKey(asset: Asset, sentimentApiUrl?: string, stablecoinFlowApiUrl?: string): string {
+  return JSON.stringify({
+    assetId: asset.id,
+    assetSymbol: asset.symbol,
+    sentimentApiUrl: sentimentApiUrl ?? null,
+    stablecoinFlowApiUrl: stablecoinFlowApiUrl ?? null
+  });
 }
 
 function readSentimentLabel(payload: Record<string, unknown>, score: number | null): SocialSentiment["label"] {

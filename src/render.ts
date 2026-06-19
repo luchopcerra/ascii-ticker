@@ -6,6 +6,7 @@ const dim = "\u001b[2m";
 const green = "\u001b[32m";
 const red = "\u001b[31m";
 const cyan = "\u001b[36m";
+const assetCardWidth = 57;
 
 export type RenderOptions = {
   ansi?: boolean;
@@ -59,7 +60,6 @@ export function renderAssetTerminal(price: MarketPrice, options: RenderOptions =
   const cacheStatus = options.cacheStatus ?? "fresh";
   const cacheTtlMs = options.cacheTtlMs ?? "30000";
   const title = `${price.symbol} / ${price.name}`;
-  const width = 57;
   const line = boxChars(charset);
   const sparkline = renderSparkline(price.sparkline, 30, charset);
   const source = `CoinGecko, ${cacheStatus}, ${cacheTtlMs}ms ttl`;
@@ -67,18 +67,18 @@ export function renderAssetTerminal(price: MarketPrice, options: RenderOptions =
   const stablecoinValue = formatStablecoinFlowRow(options.indicators?.stablecoinFlow, options);
 
   return [
-    `${line.topLeft}${line.horizontal} ${color(title, `${bold}${cyan}`, ansi)} ${line.horizontal.repeat(Math.max(width - title.length - 4, 1))}${line.topRight}`,
-    boxRow("Price", formatMoney(price.price, price.currency), width, line, ansi),
-    boxRow("24h", color(formatChange(price.change24h, charset), changeAnsi(price.change24h), ansi), width, line, ansi),
-    boxRow("High / Low", `${formatNullableMoney(price.high24h, price.currency)} / ${formatNullableMoney(price.low24h, price.currency)}`, width, line, ansi),
-    boxRow("Volume", formatCompact(price.volume24h), width, line, ansi),
-    boxRow("Source", source, width, line, ansi),
-    `${line.leftJoin}${line.horizontal.repeat(width)}${line.rightJoin}`,
-    boxRow("7d", sparkline || "n/a", width, line, ansi),
-    `${line.leftJoin}${line.horizontal.repeat(width)}${line.rightJoin}`,
-    boxRow("Sentiment", sentimentValue, width, line, ansi),
-    boxRow("Stables", stablecoinValue, width, line, ansi),
-    `${line.bottomLeft}${line.horizontal.repeat(width)}${line.bottomRight}`
+    `${line.topLeft}${line.horizontal} ${color(title, `${bold}${cyan}`, ansi)} ${line.horizontal.repeat(Math.max(assetCardWidth - title.length - 4, 1))}${line.topRight}`,
+    boxRow("Price", formatMoney(price.price, price.currency), assetCardWidth, line, ansi),
+    boxRow("24h", color(formatChange(price.change24h, charset), changeAnsi(price.change24h), ansi), assetCardWidth, line, ansi),
+    boxRow("High / Low", `${formatNullableMoney(price.high24h, price.currency)} / ${formatNullableMoney(price.low24h, price.currency)}`, assetCardWidth, line, ansi),
+    boxRow("Volume", formatCompact(price.volume24h), assetCardWidth, line, ansi),
+    boxRow("Source", source, assetCardWidth, line, ansi),
+    `${line.leftJoin}${line.horizontal.repeat(assetCardWidth)}${line.rightJoin}`,
+    boxRow("7d", sparkline || "n/a", assetCardWidth, line, ansi),
+    `${line.leftJoin}${line.horizontal.repeat(assetCardWidth)}${line.rightJoin}`,
+    boxRow("Sentiment", sentimentValue, assetCardWidth, line, ansi),
+    boxRow("Stables", stablecoinValue, assetCardWidth, line, ansi),
+    `${line.bottomLeft}${line.horizontal.repeat(assetCardWidth)}${line.bottomRight}`
   ].join("\n");
 }
 
@@ -146,7 +146,7 @@ function formatStablecoinFlowRow(flow: StablecoinFlow | undefined, options: Rend
   }
 
   const gauge = renderFlowGauge(flow.ratio, flow.label, charset, ansi);
-  const net = flow.netFlowUsd === null ? "n/a" : `${flow.netFlowUsd < 0 ? "-" : ""}${formatCompact(Math.abs(flow.netFlowUsd))} net`;
+  const net = formatNetFlow(flow.netFlowUsd);
   return `${color(label, flowAnsi(flow.label), ansi)}  ${gauge} ${net}`;
 }
 
@@ -203,6 +203,14 @@ function renderFlowGauge(
   const filled = Math.round(Math.min(Math.max(ratio, 0), 1) * 10);
   const gauge = `[${fill.repeat(filled)}${empty.repeat(10 - filled)}]`;
   return color(gauge, flowAnsi(label), ansi);
+}
+
+function formatNetFlow(value: number | null): string {
+  if (value === null) {
+    return "n/a";
+  }
+
+  return `${value < 0 ? "-" : ""}${formatCompact(Math.abs(value))} net`;
 }
 
 function sample(values: number[], width: number): number[] {
