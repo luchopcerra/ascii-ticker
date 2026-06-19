@@ -11,6 +11,10 @@ import {
 import { renderAssetPlain, renderAssetTerminal, renderPlain, renderTerminal, type RenderOptions } from "./render.js";
 
 type Env = PriceEnv;
+const sentimentNormalizationFactor = 10;
+const sentimentThreshold = 0.15;
+const stablecoinNeutralThreshold = 0.5;
+const stablecoinVelocityMultiplier = 8;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -125,7 +129,7 @@ function withIndicatorFallbacks(price: MarketPrice, indicators: LeadingIndicator
 
 function fallbackSentiment(price: MarketPrice): SocialSentiment {
   const changeSignal = priceChangeSignal(price);
-  const score = changeSignal === null ? 0 : clamp(changeSignal / 10, -1, 1);
+  const score = changeSignal === null ? 0 : clamp(changeSignal / sentimentNormalizationFactor, -1, 1);
 
   return {
     score,
@@ -138,7 +142,14 @@ function fallbackSentiment(price: MarketPrice): SocialSentiment {
 function fallbackStablecoinFlow(price: MarketPrice): StablecoinFlow {
   const changeSignal = priceChangeSignal(price);
   const velocity = price.volume24h !== null && price.marketCap !== null && price.marketCap > 0 ? price.volume24h / price.marketCap : null;
-  const ratio = clamp(average([changeSignal === null ? null : Math.abs(changeSignal) / 10, velocity === null ? null : velocity * 8]) ?? 0, 0, 1);
+  const ratio = clamp(
+    average([
+      changeSignal === null ? null : Math.abs(changeSignal) / sentimentNormalizationFactor,
+      velocity === null ? null : velocity * stablecoinVelocityMultiplier
+    ]) ?? 0,
+    0,
+    1
+  );
   const netFlowUsd = price.volume24h === null || changeSignal === null ? null : price.volume24h * (changeSignal / 100);
 
   return {
@@ -166,11 +177,11 @@ function priceChangeSignal(price: MarketPrice): number | null {
 }
 
 function sentimentLabel(score: number): SocialSentiment["label"] {
-  if (score > 0.15) {
+  if (score > sentimentThreshold) {
     return "bullish";
   }
 
-  if (score < -0.15) {
+  if (score < -sentimentThreshold) {
     return "bearish";
   }
 
@@ -178,7 +189,7 @@ function sentimentLabel(score: number): SocialSentiment["label"] {
 }
 
 function stablecoinLabel(changeSignal: number | null): StablecoinFlow["label"] {
-  if (changeSignal === null || Math.abs(changeSignal) < 0.5) {
+  if (changeSignal === null || Math.abs(changeSignal) < stablecoinNeutralThreshold) {
     return "neutral";
   }
 
