@@ -1,5 +1,5 @@
 import { assets, findAsset } from "./assets.js";
-import { getPrices, type PriceEnv } from "./coingecko.js";
+import { getLeadingIndicators, getPrices, type PriceEnv } from "./coingecko.js";
 import { renderAssetPlain, renderAssetTerminal, renderPlain, renderTerminal, type RenderOptions } from "./render.js";
 
 type Env = PriceEnv;
@@ -51,15 +51,17 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     currency,
     env
   });
+  const indicators = asset ? await getLeadingIndicators({ asset, env }) : undefined;
   const renderOptions: RenderOptions = {
     ansi: wantsAnsi(request) && url.searchParams.get("color") !== "never",
     cacheTtlMs: env.CACHE_TTL_MS,
     cacheStatus,
-    charset: url.searchParams.get("charset") === "ascii" ? "ascii" : "unicode"
+    charset: url.searchParams.get("charset") === "ascii" ? "ascii" : "unicode",
+    indicators
   };
 
   if (format === "json" || wantsJson(request)) {
-    return json(asset ? { ...prices[0], cacheStatus } : { currency: currency.toUpperCase(), cacheStatus, prices });
+    return json(asset ? { ...prices[0], cacheStatus, indicators } : { currency: currency.toUpperCase(), cacheStatus, prices });
   }
 
   const body = asset

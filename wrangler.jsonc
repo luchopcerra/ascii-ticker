@@ -8,6 +8,8 @@
   },
   "vars": {
     "CACHE_TTL_MS": "30000",
-    "COINGECKO_API_URL": "https://api.coingecko.com/api/v3"
+    "COINGECKO_API_URL": "https://api.coingecko.com/api/v3",
+    "SENTIMENT_API_URL": "",
+    "STABLECOIN_FLOW_API_URL": ""
   }
 }
