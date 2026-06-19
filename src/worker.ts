@@ -11,6 +11,8 @@ import {
 import { renderAssetPlain, renderAssetTerminal, renderPlain, renderTerminal, type RenderOptions } from "./render.js";
 
 type Env = PriceEnv;
+const minPriceBaseline = 1e-10;
+// Heuristic fallback tuning for when optional indicator APIs are not configured.
 const sentimentNormalizationFactor = 10;
 const sentimentThreshold = 0.15;
 const stablecoinNeutralThreshold = 0.5;
@@ -169,7 +171,7 @@ function priceChangeSignal(price: MarketPrice): number | null {
   const start = price.sparkline.find(Number.isFinite);
   const end = [...price.sparkline].reverse().find(Number.isFinite);
 
-  if (start === undefined || end === undefined || start === 0) {
+  if (start === undefined || end === undefined || Math.abs(start) < minPriceBaseline) {
     return null;
   }
 
@@ -199,7 +201,7 @@ function stablecoinLabel(changeSignal: number | null): StablecoinFlow["label"] {
 function average(values: Array<number | null>): number | null {
   const present = values.filter((value): value is number => value !== null);
 
-  if (!present.length) {
+  if (present.length === 0) {
     return null;
   }
 
