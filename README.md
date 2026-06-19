@@ -15,15 +15,18 @@ curl "https://ascii-ticker.perezcerraluciano.workers.dev/sol?format=json"
 Example single-asset terminal output:
 
 ```text
-┌─ BTC / Bitcoin ───────────────────────────┐
-│ Price      $104,220.11                    │
-│ 24h        ▲ 2.14%                        │
-│ High / Low $105,100.00 / $101,800.00      │
-│ Volume     $42.1B                         │
-│ Source     CoinGecko, fresh, 30000ms ttl  │
-├────────────────────────────────────────────┤
-│ 7d         ▁▂▃▄▅▆▇█▇▆▅▄▅▆▇█              │
-└────────────────────────────────────────────┘
+┌─ BTC / Bitcoin ─────────────────────────────────────────┐
+│ Price      $104,220.11                                  │
+│ 24h        ▲ 2.14%                                      │
+│ High / Low $105,100.00 / $101,800.00                    │
+│ Volume     $42.1B                                       │
+│ Source     CoinGecko, fresh, 30000ms ttl                │
+├─────────────────────────────────────────────────────────┤
+│ 7d         ▁▂▃▄▅▆▇█▇▆▅▄▅▆▇█                             │
+├─────────────────────────────────────────────────────────┤
+│ Sentiment  Unavailable                                  │
+│ Stables    Unavailable                                  │
+└─────────────────────────────────────────────────────────┘
 ```
 
 Local development:
