@@ -69,7 +69,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     env
   });
   if (asset && prices.length === 0) {
-    throw new Error(`CoinGecko returned no market data for ${asset.symbol.toUpperCase()}; verify the asset is supported and the upstream API is available`);
+    throw new Error(`CoinGecko returned no market data for ${asset.symbol.toUpperCase()}; verify the asset is supported by CoinGecko and the CoinGecko API is available`);
   }
   const indicators = asset ? withIndicatorFallbacks(prices[0], await getLeadingIndicators({ asset, env })) : undefined;
   const renderOptions: RenderOptions = {
@@ -162,9 +162,11 @@ function fallbackStablecoinFlow(price: MarketPrice): StablecoinFlow {
   const tradingVelocity = calculateTradingVelocity(price);
   const normalizedChange = changeSignal === null ? null : Math.abs(changeSignal) / sentimentNormalizationFactor;
   const scaledVelocity = tradingVelocity === null ? null : tradingVelocity * stablecoinVelocityMultiplier;
-  const ratio = clamp(average([normalizedChange, scaledVelocity]) ?? 0, 0, 1);
+  const averageRatio = averagePresent([normalizedChange, scaledVelocity]);
+  const ratio = averageRatio === null ? null : clamp(averageRatio, 0, 1);
   // Volume divided by market cap acts as a simple trading-velocity proxy for flow intensity.
   // Scale volume by signed daily price change to approximate direction and magnitude of net flow.
+  // `changeSignal` is a percent, so divide by 100 to convert it to a decimal multiplier.
   const netFlowUsd = price.volume24h === null || changeSignal === null ? null : price.volume24h * (changeSignal / 100);
 
   return {
@@ -219,7 +221,7 @@ function stablecoinLabel(changeSignal: number | null): StablecoinFlow["label"] {
   return changeSignal > 0 ? "inflow" : "outflow";
 }
 
-function average(values: Array<number | null>): number | null {
+function averagePresent(values: Array<number | null>): number | null {
   const present = values.filter((value): value is number => value !== null);
 
   if (present.length === 0) {
