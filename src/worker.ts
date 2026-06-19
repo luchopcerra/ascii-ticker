@@ -69,7 +69,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     env
   });
   if (asset && prices.length === 0) {
-    throw new Error(`CoinGecko returned no market data for ${asset.symbol.toUpperCase()}`);
+    throw new Error(`CoinGecko returned no market data for ${asset.symbol.toUpperCase()}; verify the asset is supported and the upstream API is available`);
   }
   const indicators = asset ? withIndicatorFallbacks(prices[0], await getLeadingIndicators({ asset, env })) : undefined;
   const renderOptions: RenderOptions = {
@@ -159,16 +159,11 @@ function fallbackSentiment(price: MarketPrice): SocialSentiment {
 
 function fallbackStablecoinFlow(price: MarketPrice): StablecoinFlow {
   const changeSignal = priceChangeSignal(price);
+  const tradingVelocity = calculateTradingVelocity(price);
+  const normalizedChange = changeSignal === null ? null : Math.abs(changeSignal) / sentimentNormalizationFactor;
+  const scaledVelocity = tradingVelocity === null ? null : tradingVelocity * stablecoinVelocityMultiplier;
+  const ratio = clamp(average([normalizedChange, scaledVelocity]) ?? 0, 0, 1);
   // Volume divided by market cap acts as a simple trading-velocity proxy for flow intensity.
-  const velocity = price.volume24h !== null && price.marketCap !== null && price.marketCap > 0 ? price.volume24h / price.marketCap : null;
-  const ratio = clamp(
-    average([
-      changeSignal === null ? null : Math.abs(changeSignal) / sentimentNormalizationFactor,
-      velocity === null ? null : velocity * stablecoinVelocityMultiplier
-    ]) ?? 0,
-    0,
-    1
-  );
   // Scale volume by signed daily price change to approximate direction and magnitude of net flow.
   const netFlowUsd = price.volume24h === null || changeSignal === null ? null : price.volume24h * (changeSignal / 100);
 
@@ -179,6 +174,14 @@ function fallbackStablecoinFlow(price: MarketPrice): StablecoinFlow {
     source: "CoinGecko volume proxy",
     updatedAt: price.updatedAt
   };
+}
+
+function calculateTradingVelocity(price: MarketPrice): number | null {
+  if (price.volume24h === null || price.marketCap === null || price.marketCap <= 0) {
+    return null;
+  }
+
+  return price.volume24h / price.marketCap;
 }
 
 function priceChangeSignal(price: MarketPrice): number | null {
