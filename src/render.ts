@@ -69,7 +69,7 @@ export function renderAssetTerminal(price: MarketPrice, options: RenderOptions =
   const stablecoinValue = formatStablecoinFlowRow(options.indicators?.stablecoinFlow, options);
 
   return [
-    `${line.topLeft}${line.horizontal} ${color(title, `${bold}${cyan}`, ansi)} ${line.horizontal.repeat(Math.max(assetCardWidth - title.length - 4, 1))}${line.topRight}`,
+    `${line.topLeft}${line.horizontal} ${color(title, `${bold}${cyan}`, ansi)} ${line.horizontal.repeat(Math.max(assetCardWidth - title.length - 3, 1))}${line.topRight}`,
     boxRow("Price", formatMoney(price.price, price.currency), assetCardWidth, line, ansi),
     boxRow("24h", color(formatChange(price.change24h, charset), changeAnsi(price.change24h), ansi), assetCardWidth, line, ansi),
     boxRow("High / Low", `${formatNullableMoney(price.high24h, price.currency)} / ${formatNullableMoney(price.low24h, price.currency)}`, assetCardWidth, line, ansi),
