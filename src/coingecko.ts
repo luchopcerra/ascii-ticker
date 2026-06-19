@@ -73,6 +73,7 @@ const INDICATOR_CACHE_TTL_MS = 5 * 60_000;
 export type PriceEnv = {
   CACHE_TTL_MS?: string;
   COINGECKO_API_URL?: string;
+  COINGECKO_API_KEY?: string;
   SENTIMENT_API_URL?: string;
   SENTIMENT_API_KEY?: string;
   STABLECOIN_FLOW_API_URL?: string;
@@ -104,6 +105,14 @@ export async function getPrices(options: {
   url.searchParams.set("page", "1");
   url.searchParams.set("sparkline", "true");
   url.searchParams.set("price_change_percentage", "24h");
+
+  const apiKey = configuredValue(options.env?.COINGECKO_API_KEY);
+  if (apiKey) {
+    url.searchParams.set("x_cg_demo_api_key", apiKey);
+    console.log("CoinGecko API key set, fetching with auth");
+  } else {
+    console.log("No CoinGecko API key configured, fetching without auth");
+  }
 
   const response = await fetch(url, {
     headers: {
