@@ -14,7 +14,7 @@ curl [https://ascii-ticker.perezcerraluciano.workers.dev](https://ascii-ticker.p
 ```
 ### Windows / PowerShell
 ```powershell
-irm "[https://ascii-ticker.perezcerraluciano.workers.dev](https://ascii-ticker.perezcerraluciano.workers.dev)"
+irm "https://ascii-ticker.perezcerraluciano.workers.dev"
 ```
 ##
 
