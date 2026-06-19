@@ -104,6 +104,15 @@ npm run deploy
 
 After deploy, Cloudflare will print the public Worker URL.
 
+## Automatic deploys from GitHub
+
+Merges to `main` trigger `.github/workflows/deploy.yml`, which installs dependencies, runs `npm run check` and `npm run build`, then deploys with Wrangler.
+
+Configure these repository secrets first so the workflow can deploy:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
 ## Configuration
 
 Environment variables:
