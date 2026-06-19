@@ -207,7 +207,6 @@ async function fetchStablecoinFlow(asset: Asset, apiUrl: string, apiKey?: string
 
 async function fetchIndicatorPayload(asset: Asset, apiUrl: string, apiKey?: string): Promise<Record<string, unknown>> {
   const url = new URL(apiUrl);
-  url.searchParams.set("asset", asset.symbol);
   url.searchParams.set("assetSymbol", asset.symbol);
   url.searchParams.set("assetId", asset.id);
   url.searchParams.set("assetName", asset.name);

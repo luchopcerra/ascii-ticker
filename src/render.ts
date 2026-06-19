@@ -7,6 +7,8 @@ const green = "\u001b[32m";
 const red = "\u001b[31m";
 const cyan = "\u001b[36m";
 const assetCardWidth = 57;
+const sentimentGaugeHalfWidth = 5;
+const flowGaugeWidth = 10;
 
 export type RenderOptions = {
   ansi?: boolean;
@@ -182,10 +184,10 @@ function renderSentimentGauge(score: number | null, charset: RenderOptions["char
   const fill = charset === "ascii" ? "#" : "█";
   const empty = "-";
   const clamped = Math.min(Math.max(score, -1), 1);
-  const left = clamped < 0 ? Math.round(Math.abs(clamped) * 5) : 0;
-  const right = clamped > 0 ? Math.round(clamped * 5) : 0;
+  const left = clamped < 0 ? Math.round(Math.abs(clamped) * sentimentGaugeHalfWidth) : 0;
+  const right = clamped > 0 ? Math.round(clamped * sentimentGaugeHalfWidth) : 0;
 
-  return `[${fill.repeat(left)}${empty.repeat(5 - left)}|${fill.repeat(right)}${empty.repeat(5 - right)}]`;
+  return `[${fill.repeat(left)}${empty.repeat(sentimentGaugeHalfWidth - left)}|${fill.repeat(right)}${empty.repeat(sentimentGaugeHalfWidth - right)}]`;
 }
 
 function renderFlowGauge(
@@ -200,8 +202,8 @@ function renderFlowGauge(
 
   const fill = charset === "ascii" ? "#" : "█";
   const empty = "-";
-  const filled = Math.round(Math.min(Math.max(ratio, 0), 1) * 10);
-  const gauge = `[${fill.repeat(filled)}${empty.repeat(10 - filled)}]`;
+  const filled = Math.round(Math.min(Math.max(ratio, 0), 1) * flowGaugeWidth);
+  const gauge = `[${fill.repeat(filled)}${empty.repeat(flowGaugeWidth - filled)}]`;
   return color(gauge, flowAnsi(label), ansi);
 }
 
