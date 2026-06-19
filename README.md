@@ -10,7 +10,7 @@ Copy and paste the command below into your terminal to get the default ticker:
 
 ### Bash / Zsh (cURL)
 ```bash
-curl [https://ascii-ticker.perezcerraluciano.workers.dev](https://ascii-ticker.perezcerraluciano.workers.dev)
+curl https://ascii-ticker.perezcerraluciano.workers.dev
 ```
 ### Windows / PowerShell
 ```powershell
