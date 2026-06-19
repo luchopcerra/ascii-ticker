@@ -20,6 +20,26 @@ export type PriceResult = {
   cacheStatus: "cached" | "fresh";
 };
 
+export type SocialSentiment = {
+  score: number | null;
+  label: "bearish" | "neutral" | "bullish" | "unavailable";
+  source: string;
+  updatedAt: string | null;
+};
+
+export type StablecoinFlow = {
+  netFlowUsd: number | null;
+  ratio: number | null;
+  label: "inflow" | "neutral" | "outflow" | "unavailable";
+  source: string;
+  updatedAt: string | null;
+};
+
+export type LeadingIndicators = {
+  sentiment: SocialSentiment;
+  stablecoinFlow: StablecoinFlow;
+};
+
 type CoinGeckoMarket = {
   id: string;
   symbol: string;
@@ -41,11 +61,22 @@ type CacheEntry = {
   prices: MarketPrice[];
 };
 
+type IndicatorCacheEntry = {
+  expiresAt: number;
+  indicators: LeadingIndicators;
+};
+
 const cache = new Map<string, CacheEntry>();
+const indicatorCache = new Map<string, IndicatorCacheEntry>();
+const INDICATOR_CACHE_TTL_MS = 5 * 60_000;
 
 export type PriceEnv = {
   CACHE_TTL_MS?: string;
   COINGECKO_API_URL?: string;
+  SENTIMENT_API_URL?: string;
+  SENTIMENT_API_KEY?: string;
+  STABLECOIN_FLOW_API_URL?: string;
+  STABLECOIN_FLOW_API_KEY?: string;
 };
 
 export async function getPrices(options: {
@@ -107,4 +138,247 @@ export async function getPrices(options: {
   });
 
   return { prices, cacheStatus: "fresh" };
+}
+
+export async function getLeadingIndicators(options: {
+  asset: Asset;
+  env?: PriceEnv;
+}): Promise<LeadingIndicators> {
+  const sentimentApiUrl = configuredValue(options.env?.SENTIMENT_API_URL);
+  const stablecoinFlowApiUrl = configuredValue(options.env?.STABLECOIN_FLOW_API_URL);
+  const cacheKey = buildIndicatorCacheKey(options.asset, sentimentApiUrl, stablecoinFlowApiUrl);
+  const cached = indicatorCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.indicators;
+  }
+
+  const [sentimentResult, stablecoinFlowResult] = await Promise.allSettled([
+    sentimentApiUrl
+      ? fetchSocialSentiment(options.asset, sentimentApiUrl, options.env?.SENTIMENT_API_KEY)
+      : Promise.resolve(unavailableSentiment()),
+    stablecoinFlowApiUrl
+      ? fetchStablecoinFlow(options.asset, stablecoinFlowApiUrl, options.env?.STABLECOIN_FLOW_API_KEY)
+      : Promise.resolve(unavailableStablecoinFlow())
+  ]);
+
+  const indicators: LeadingIndicators = {
+    sentiment: settledValue(sentimentResult, unavailableSentiment()),
+    stablecoinFlow: settledValue(stablecoinFlowResult, unavailableStablecoinFlow())
+  };
+
+  indicatorCache.set(cacheKey, {
+    expiresAt: Date.now() + INDICATOR_CACHE_TTL_MS,
+    indicators
+  });
+
+  return indicators;
+}
+
+async function fetchSocialSentiment(asset: Asset, apiUrl: string, apiKey?: string): Promise<SocialSentiment> {
+  const payload = await fetchIndicatorPayload(asset, apiUrl, apiKey);
+  const source = readString(payload, ["source", "provider"]) ?? urlSource(apiUrl);
+  const score = clamp(readNumber(payload, ["score", "sentimentScore", "value"]), -1, 1);
+  const label = readSentimentLabel(payload, score);
+
+  return {
+    score,
+    label,
+    source,
+    updatedAt: readString(payload, ["updatedAt", "updated_at", "lastUpdated", "timestamp"])
+  };
+}
+
+async function fetchStablecoinFlow(asset: Asset, apiUrl: string, apiKey?: string): Promise<StablecoinFlow> {
+  const payload = await fetchIndicatorPayload(asset, apiUrl, apiKey);
+  const source = readString(payload, ["source", "provider"]) ?? urlSource(apiUrl);
+  const netFlowUsd = readNumber(payload, ["netFlowUsd", "net_flow_usd", "netFlow", "value"]);
+  const ratio = clamp(readNumber(payload, ["ratio", "normalizedRatio", "normalized_ratio", "normalized", "score"]), 0, 1);
+  const label = readStablecoinLabel(payload, netFlowUsd);
+
+  return {
+    netFlowUsd,
+    ratio,
+    label,
+    source,
+    updatedAt: readString(payload, ["updatedAt", "updated_at", "lastUpdated", "timestamp"])
+  };
+}
+
+async function fetchIndicatorPayload(asset: Asset, apiUrl: string, apiKey?: string): Promise<Record<string, unknown>> {
+  const url = new URL(apiUrl);
+  url.searchParams.set("assetSymbol", asset.symbol);
+  url.searchParams.set("assetId", asset.id);
+  url.searchParams.set("assetName", asset.name);
+
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      ...indicatorAuthHeaders(apiKey),
+      "user-agent": "ascii-ticker/0.1"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Indicator source returned ${response.status}`);
+  }
+
+  return normalizeIndicatorPayload(await response.json());
+}
+
+function normalizeIndicatorPayload(payload: unknown): Record<string, unknown> {
+  if (isRecord(payload)) {
+    if (isRecord(payload.data)) {
+      return payload.data;
+    }
+
+    return payload;
+  }
+
+  if (Array.isArray(payload)) {
+    const first = payload.find(isRecord);
+    if (first) {
+      return first;
+    }
+  }
+
+  throw new Error("Indicator payload was not an object");
+}
+
+function indicatorAuthHeaders(apiKey?: string): HeadersInit {
+  const key = configuredValue(apiKey);
+
+  if (!key) {
+    return {};
+  }
+
+  return {
+    "x-api-key": key
+  };
+}
+
+function unavailableSentiment(): SocialSentiment {
+  return {
+    score: null,
+    label: "unavailable",
+    source: "unavailable",
+    updatedAt: null
+  };
+}
+
+function unavailableStablecoinFlow(): StablecoinFlow {
+  return {
+    netFlowUsd: null,
+    ratio: null,
+    label: "unavailable",
+    source: "unavailable",
+    updatedAt: null
+  };
+}
+
+function settledValue<T>(result: PromiseSettledResult<T>, fallback: T): T {
+  return result.status === "fulfilled" ? result.value : fallback;
+}
+
+function buildIndicatorCacheKey(asset: Asset, sentimentApiUrl?: string, stablecoinFlowApiUrl?: string): string {
+  return JSON.stringify({
+    assetId: asset.id,
+    assetSymbol: asset.symbol,
+    sentimentApiUrl: sentimentApiUrl ?? null,
+    stablecoinFlowApiUrl: stablecoinFlowApiUrl ?? null
+  });
+}
+
+function readSentimentLabel(payload: Record<string, unknown>, score: number | null): SocialSentiment["label"] {
+  const label = readString(payload, ["label", "sentiment", "signal"])?.toLowerCase();
+
+  if (label === "bearish" || label === "neutral" || label === "bullish") {
+    return label;
+  }
+
+  if (score === null) {
+    return "unavailable";
+  }
+
+  if (score > 0) {
+    return "bullish";
+  }
+
+  if (score < 0) {
+    return "bearish";
+  }
+
+  return "neutral";
+}
+
+function readStablecoinLabel(payload: Record<string, unknown>, netFlowUsd: number | null): StablecoinFlow["label"] {
+  const label = readString(payload, ["label", "flow", "signal"])?.toLowerCase();
+
+  if (label === "inflow" || label === "neutral" || label === "outflow") {
+    return label;
+  }
+
+  if (netFlowUsd === null) {
+    return "unavailable";
+  }
+
+  if (netFlowUsd > 0) {
+    return "inflow";
+  }
+
+  if (netFlowUsd < 0) {
+    return "outflow";
+  }
+
+  return "neutral";
+}
+
+function readString(payload: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function readNumber(payload: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function clamp(value: number | null, min: number, max: number): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  return Math.min(Math.max(value, min), max);
+}
+
+function configuredValue(value?: string): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function urlSource(apiUrl: string): string {
+  return new URL(apiUrl).hostname;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
