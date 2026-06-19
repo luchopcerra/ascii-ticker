@@ -1,4 +1,4 @@
-import type { MarketPrice, PriceResult } from "./coingecko.js";
+import type { LeadingIndicators, MarketPrice, PriceResult, SocialSentiment, StablecoinFlow } from "./coingecko.js";
 
 const reset = "\u001b[0m";
 const bold = "\u001b[1m";
@@ -12,6 +12,7 @@ export type RenderOptions = {
   cacheTtlMs?: string;
   cacheStatus?: PriceResult["cacheStatus"];
   charset?: "unicode" | "ascii";
+  indicators?: LeadingIndicators;
 };
 
 export function renderTerminal(prices: MarketPrice[], options: RenderOptions = {}): string {
@@ -58,10 +59,12 @@ export function renderAssetTerminal(price: MarketPrice, options: RenderOptions =
   const cacheStatus = options.cacheStatus ?? "fresh";
   const cacheTtlMs = options.cacheTtlMs ?? "30000";
   const title = `${price.symbol} / ${price.name}`;
-  const width = 44;
+  const width = 57;
   const line = boxChars(charset);
   const sparkline = renderSparkline(price.sparkline, 30, charset);
   const source = `CoinGecko, ${cacheStatus}, ${cacheTtlMs}ms ttl`;
+  const sentimentValue = formatSentimentRow(options.indicators?.sentiment, options);
+  const stablecoinValue = formatStablecoinFlowRow(options.indicators?.stablecoinFlow, options);
 
   return [
     `${line.topLeft}${line.horizontal} ${color(title, `${bold}${cyan}`, ansi)} ${line.horizontal.repeat(Math.max(width - title.length - 4, 1))}${line.topRight}`,
@@ -72,6 +75,9 @@ export function renderAssetTerminal(price: MarketPrice, options: RenderOptions =
     boxRow("Source", source, width, line, ansi),
     `${line.leftJoin}${line.horizontal.repeat(width)}${line.rightJoin}`,
     boxRow("7d", sparkline || "n/a", width, line, ansi),
+    `${line.leftJoin}${line.horizontal.repeat(width)}${line.rightJoin}`,
+    boxRow("Sentiment", sentimentValue, width, line, ansi),
+    boxRow("Stables", stablecoinValue, width, line, ansi),
     `${line.bottomLeft}${line.horizontal.repeat(width)}${line.bottomRight}`
   ].join("\n");
 }
@@ -116,6 +122,34 @@ function formatChange(value: number | null, charset: RenderOptions["charset"] = 
   return `${arrow} ${Math.abs(value).toFixed(2)}%`;
 }
 
+function formatSentimentRow(sentiment: SocialSentiment | undefined, options: RenderOptions): string {
+  const ansi = options.ansi ?? true;
+  const charset = options.charset ?? "unicode";
+  const label = capitalize(sentiment?.label ?? "unavailable");
+
+  if (!sentiment || sentiment.label === "unavailable") {
+    return color(label, dim, ansi);
+  }
+
+  const gauge = renderSentimentGauge(sentiment.score, charset);
+  const score = sentiment.score === null ? "n/a" : `${sentiment.score >= 0 ? "+" : ""}${sentiment.score.toFixed(2)}`;
+  return `${color(label, sentimentAnsi(sentiment.label), ansi)}  ${gauge} ${score}`;
+}
+
+function formatStablecoinFlowRow(flow: StablecoinFlow | undefined, options: RenderOptions): string {
+  const ansi = options.ansi ?? true;
+  const charset = options.charset ?? "unicode";
+  const label = capitalize(flow?.label ?? "unavailable");
+
+  if (!flow || flow.label === "unavailable") {
+    return color(label, dim, ansi);
+  }
+
+  const gauge = renderFlowGauge(flow.ratio, flow.label, charset, ansi);
+  const net = flow.netFlowUsd === null ? "n/a" : `${flow.netFlowUsd < 0 ? "-" : ""}${formatCompact(Math.abs(flow.netFlowUsd))} net`;
+  return `${color(label, flowAnsi(flow.label), ansi)}  ${gauge} ${net}`;
+}
+
 function renderSparkline(values: number[], width: number, charset: RenderOptions["charset"] = "unicode"): string {
   const points = values.filter(Number.isFinite);
 
@@ -138,6 +172,37 @@ function renderSparkline(values: number[], width: number, charset: RenderOptions
       return chars[index];
     })
     .join("");
+}
+
+function renderSentimentGauge(score: number | null, charset: RenderOptions["charset"] = "unicode"): string {
+  if (score === null) {
+    return "n/a";
+  }
+
+  const fill = charset === "ascii" ? "#" : "█";
+  const empty = "-";
+  const clamped = Math.min(Math.max(score, -1), 1);
+  const left = clamped < 0 ? Math.round(Math.abs(clamped) * 5) : 0;
+  const right = clamped > 0 ? Math.round(clamped * 5) : 0;
+
+  return `[${fill.repeat(left)}${empty.repeat(5 - left)}|${fill.repeat(right)}${empty.repeat(5 - right)}]`;
+}
+
+function renderFlowGauge(
+  ratio: number | null,
+  label: StablecoinFlow["label"],
+  charset: RenderOptions["charset"] = "unicode",
+  ansi = true
+): string {
+  if (ratio === null) {
+    return "n/a";
+  }
+
+  const fill = charset === "ascii" ? "#" : "█";
+  const empty = "-";
+  const filled = Math.round(Math.min(Math.max(ratio, 0), 1) * 10);
+  const gauge = `[${fill.repeat(filled)}${empty.repeat(10 - filled)}]`;
+  return color(gauge, flowAnsi(label), ansi);
 }
 
 function sample(values: number[], width: number): number[] {
@@ -185,6 +250,34 @@ function boxChars(charset: RenderOptions["charset"] = "unicode") {
 
 function changeAnsi(value: number | null): string {
   return (value ?? 0) >= 0 ? green : red;
+}
+
+function sentimentAnsi(label: SocialSentiment["label"]): string {
+  if (label === "bullish") {
+    return green;
+  }
+
+  if (label === "bearish") {
+    return red;
+  }
+
+  return dim;
+}
+
+function flowAnsi(label: StablecoinFlow["label"]): string {
+  if (label === "inflow") {
+    return green;
+  }
+
+  if (label === "outflow") {
+    return red;
+  }
+
+  return dim;
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function color(value: string, code: string, ansi: boolean): string {
