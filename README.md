@@ -4,6 +4,20 @@ Terminal-first market ticker for realtime crypto and digital asset prices over H
 
 It is built to be used from a shell. The default response is text, with terminal graphics, ANSI color for curl/httpie/wget, 7-day sparklines, and cache freshness metadata.
 
+## Quick Start
+
+Copy and paste the command below into your terminal to get the default ticker:
+
+### Bash / Zsh (cURL)
+```bash
+curl https://ascii-ticker.perezcerraluciano.workers.dev
+```
+### Windows / PowerShell
+```powershell
+irm "https://ascii-ticker.perezcerraluciano.workers.dev"
+```
+##
+
 ```sh
 curl https://ascii-ticker.perezcerraluciano.workers.dev
 curl https://ascii-ticker.perezcerraluciano.workers.dev/btc
