@@ -11,8 +11,11 @@ import {
 import { renderAssetPlain, renderAssetTerminal, renderPlain, renderTerminal, type RenderOptions } from "./render.js";
 
 type Env = PriceEnv;
+// Avoid division-by-zero when deriving a percent change from tiny sparkline baselines.
 const minPriceBaseline = 1e-10;
-// Heuristic fallback tuning for when optional indicator APIs are not configured.
+// Heuristic fallback tuning for when optional indicator APIs are not configured:
+// normalize ~10% daily moves into a full sentiment scale, keep ±0.15 near neutral,
+// treat sub-0.5% moves as stable, and weight volume velocity into the flow gauge.
 const sentimentNormalizationFactor = 10;
 const sentimentThreshold = 0.15;
 const stablecoinNeutralThreshold = 0.5;
@@ -65,6 +68,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     currency,
     env
   });
+  if (asset && prices.length === 0) {
+    throw new Error(`CoinGecko returned no market data for ${asset.symbol.toUpperCase()}`);
+  }
   const indicators = asset ? withIndicatorFallbacks(prices[0], await getLeadingIndicators({ asset, env })) : undefined;
   const renderOptions: RenderOptions = {
     ansi: wantsAnsi(request) && url.searchParams.get("color") !== "never",
@@ -131,7 +137,17 @@ function withIndicatorFallbacks(price: MarketPrice, indicators: LeadingIndicator
 
 function fallbackSentiment(price: MarketPrice): SocialSentiment {
   const changeSignal = priceChangeSignal(price);
-  const score = changeSignal === null ? 0 : clamp(changeSignal / sentimentNormalizationFactor, -1, 1);
+
+  if (changeSignal === null) {
+    return {
+      score: null,
+      label: "unavailable",
+      source: "CoinGecko price proxy",
+      updatedAt: price.updatedAt
+    };
+  }
+
+  const score = clamp(changeSignal / sentimentNormalizationFactor, -1, 1);
 
   return {
     score,
@@ -143,6 +159,7 @@ function fallbackSentiment(price: MarketPrice): SocialSentiment {
 
 function fallbackStablecoinFlow(price: MarketPrice): StablecoinFlow {
   const changeSignal = priceChangeSignal(price);
+  // Volume divided by market cap acts as a simple trading-velocity proxy for flow intensity.
   const velocity = price.volume24h !== null && price.marketCap !== null && price.marketCap > 0 ? price.volume24h / price.marketCap : null;
   const ratio = clamp(
     average([
@@ -152,6 +169,7 @@ function fallbackStablecoinFlow(price: MarketPrice): StablecoinFlow {
     0,
     1
   );
+  // Scale volume by signed daily price change to approximate direction and magnitude of net flow.
   const netFlowUsd = price.volume24h === null || changeSignal === null ? null : price.volume24h * (changeSignal / 100);
 
   return {
