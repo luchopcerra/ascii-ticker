@@ -21,6 +21,7 @@ irm "https://ascii-ticker.perezcerraluciano.workers.dev"
 ```sh
 curl https://ascii-ticker.perezcerraluciano.workers.dev
 curl https://ascii-ticker.perezcerraluciano.workers.dev/btc
+curl https://ascii-ticker.perezcerraluciano.workers.dev/help
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?charset=ascii"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/sol?format=json"
@@ -48,6 +49,7 @@ Local development:
 ```sh
 curl http://localhost:8787
 curl http://localhost:8787/btc
+curl http://localhost:8787/help
 curl "http://localhost:8787/eth?currency=eur"
 curl "http://localhost:8787?charset=ascii"
 curl "http://localhost:8787/sol?format=json"
@@ -60,6 +62,7 @@ curl "http://localhost:8787/sol?format=json"
 - 7-day sparklines in table and card output.
 - ASCII fallback with `?charset=ascii`.
 - JSON API for apps and scripts.
+- Help output with `/help`, `/--help`, `/-h`, `?help`, `?--help`, or `?-h`.
 - Short in-memory cache to reduce upstream API calls, with `fresh`/`cached` metadata in responses.
 - Symbol routes like `/btc`, `/eth`, `/sol`, `/usdc`.
 - Currency override with `?currency=usd`, `?currency=eur`, etc.
@@ -84,6 +87,12 @@ Useful query parameters:
 - `?charset=ascii`: use ASCII-only chart and box characters.
 - `?color=never`: disable ANSI color.
 - `?format=json`: return JSON instead of terminal text.
+
+### `GET /help`
+
+Returns terminal-friendly usage help, similar to a CLI `--help` screen.
+
+Aliases: `/--help`, `/-h`, `?help`, `?--help`, and `?-h`.
 
 ### `GET /api/prices`
 

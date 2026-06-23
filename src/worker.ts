@@ -8,7 +8,15 @@ import {
   type SocialSentiment,
   type StablecoinFlow
 } from "./coingecko.js";
-import { renderAssetPlain, renderAssetTerminal, renderPlain, renderTerminal, type RenderOptions } from "./render.js";
+import {
+  renderAssetPlain,
+  renderAssetTerminal,
+  renderHelpPlain,
+  renderHelpTerminal,
+  renderPlain,
+  renderTerminal,
+  type RenderOptions
+} from "./render.js";
 
 type Env = PriceEnv;
 // Avoid division-by-zero when deriving a percent change from tiny sparkline baselines.
@@ -36,6 +44,15 @@ export default {
 async function handleRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
 
+  if (isHelpRequest(url)) {
+    const options: RenderOptions = {
+      ansi: wantsAnsi(request) && url.searchParams.get("color") !== "never"
+    };
+    const body = `${options.ansi ? renderHelpTerminal(options) : renderHelpPlain(options)}\n`;
+
+    return new Response(body, { headers: textHeaders() });
+  }
+
   if (url.pathname === "/health") {
     return json({ ok: true });
   }
@@ -55,7 +72,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   const asset = assetParam ? findAsset(assetParam) : undefined;
 
   if (assetParam && !asset) {
-    return new Response(`Unknown asset: ${assetParam}\nTry /btc, /eth, /sol, or /api/assets\n`, {
+    return new Response(`Unknown asset: ${assetParam}\nTry /btc, /eth, /sol, /help, or /api/assets\n`, {
       status: 404,
       headers: textHeaders()
     });
@@ -99,6 +116,18 @@ function pathAsset(pathname: string): string | undefined {
   }
 
   return segment;
+}
+
+function isHelpRequest(url: URL): boolean {
+  const pathname = url.pathname.replace(/\/+$/, "") || "/";
+  return (
+    pathname === "/help" ||
+    pathname === "/--help" ||
+    pathname === "/-h" ||
+    url.searchParams.has("help") ||
+    url.searchParams.has("--help") ||
+    url.searchParams.has("-h")
+  );
 }
 
 function wantsJson(request: Request): boolean {
