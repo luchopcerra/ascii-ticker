@@ -30,3 +30,33 @@ export function findAsset(input: string): Asset | undefined {
       asset.name.toLowerCase() === normalized
   );
 }
+
+export function parseAssetList(input: string): {
+  assets: Asset[];
+  unknown: string[];
+} {
+  const selectedAssets: Asset[] = [];
+  const seen = new Set<string>();
+  const unknown: string[] = [];
+
+  for (const token of input.split(",")) {
+    const assetInput = token.trim();
+
+    if (!assetInput) {
+      continue;
+    }
+
+    const asset = findAsset(assetInput);
+    if (!asset) {
+      unknown.push(assetInput);
+      continue;
+    }
+
+    if (!seen.has(asset.id)) {
+      selectedAssets.push(asset);
+      seen.add(asset.id);
+    }
+  }
+
+  return { assets: selectedAssets, unknown };
+}
