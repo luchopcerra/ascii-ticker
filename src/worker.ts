@@ -2,8 +2,10 @@ import { assets, findAsset, parseAssetList, type Asset } from "./assets.js";
 import {
   getLeadingIndicators,
   getPrices,
+  getTrendingCoins,
   type LeadingIndicators,
   type MarketPrice,
+  type PriceRange,
   type PriceEnv,
   type SocialSentiment,
   type StablecoinFlow
@@ -12,12 +14,17 @@ import { getEthereumWalletHoldings, isEthereumAddress, type WalletEnv } from "./
 import {
   renderAssetPlain,
   renderAssetTerminal,
+  renderComparePlain,
+  renderCompareTerminal,
   renderHelpPlain,
   renderHelpTerminal,
+  renderInstallSnippet,
   renderPlain,
   renderPortfolioPlain,
   renderPortfolioTerminal,
   renderTerminal,
+  renderTrendingPlain,
+  renderTrendingTerminal,
   type PortfolioPosition,
   type PortfolioSummary,
   type RenderOptions
@@ -66,6 +73,85 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return json({ assets });
   }
 
+  if (url.pathname === "/install") {
+    return new Response(`${renderInstallSnippet(originBaseUrl(url))}\n`, { headers: textHeaders() });
+  }
+
+  const rangeResult = parseRange(url.searchParams.get("range"));
+  if (rangeResult.error) {
+    return json({ error: rangeResult.error }, 400);
+  }
+  const range = rangeResult.range;
+
+  if (url.pathname === "/trending") {
+    const trending = await getTrendingCoins({ env });
+
+    if (url.searchParams.get("format") === "json" || wantsJson(request)) {
+      return json({ source: "CoinGecko", trending });
+    }
+
+    const body = wantsAnsi(request) && url.searchParams.get("color") !== "never"
+      ? renderTrendingTerminal(trending)
+      : renderTrendingPlain(trending);
+    return new Response(`${body}\n`, { headers: textHeaders() });
+  }
+
+  if (url.pathname === "/feed.txt" || url.pathname === "/rss.xml") {
+    const currency = url.searchParams.get("currency") ?? "usd";
+    const watchlistResult = resolveWatchlist(url.searchParams.get("assets"), undefined);
+    if (watchlistResult.error) {
+      return json({ error: watchlistResult.error }, 400);
+    }
+
+    const { prices, cacheStatus } = await getPrices({
+      requestedAssets: watchlistResult.assets,
+      currency,
+      range,
+      env
+    });
+
+    if (url.pathname === "/rss.xml") {
+      return new Response(renderRssFeed(prices, url), {
+        headers: {
+          "content-type": "application/rss+xml; charset=utf-8",
+          "cache-control": "public, max-age=15"
+        }
+      });
+    }
+
+    return new Response(`${renderTextFeed(prices, cacheStatus, range)}\n`, { headers: textHeaders() });
+  }
+
+  const compareAssetsResult = resolveCompareAssets(url.pathname);
+  if (compareAssetsResult.error) {
+    return json({ error: compareAssetsResult.error }, 400);
+  }
+  if (compareAssetsResult.assets) {
+    const currency = url.searchParams.get("currency") ?? "usd";
+    const { prices, cacheStatus } = await getPrices({
+      requestedAssets: compareAssetsResult.assets,
+      currency,
+      range,
+      env
+    });
+    const renderOptions: RenderOptions = {
+      ansi: wantsAnsi(request) && url.searchParams.get("color") !== "never",
+      cacheTtlMs: env.CACHE_TTL_MS,
+      cacheStatus,
+      charset: url.searchParams.get("charset") === "ascii" ? "ascii" : "unicode",
+      range
+    };
+
+    if (url.searchParams.get("format") === "json" || wantsJson(request)) {
+      return json({ currency: currency.toUpperCase(), cacheStatus, range, prices });
+    }
+
+    const body = renderOptions.ansi
+      ? renderCompareTerminal(prices, renderOptions)
+      : renderComparePlain(prices, renderOptions);
+    return new Response(`${body}\n`, { headers: textHeaders() });
+  }
+
   if (url.pathname === "/api/prices") {
     const currency = url.searchParams.get("currency") ?? "usd";
     const walletResult = await resolveWalletHoldings(url, env);
@@ -88,6 +174,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     const { prices, cacheStatus } = await getPrices({
       requestedAssets: watchlistResult.assets,
       currency,
+      range,
       env
     });
     const portfolio = holdingsResult.holdings
@@ -97,6 +184,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return json({
       currency: currency.toUpperCase(),
       cacheStatus,
+      range,
       prices,
       ...(walletResult.wallet ? { wallet: walletResult.wallet } : {}),
       ...(portfolio ? { portfolio } : {})
@@ -140,6 +228,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   const { prices, cacheStatus } = await getPrices({
     requestedAssets: asset ? [asset] : watchlistResult.assets,
     currency,
+    range,
     env
   });
   if (asset && prices.length === 0) {
@@ -151,7 +240,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     cacheTtlMs: env.CACHE_TTL_MS,
     cacheStatus,
     charset: url.searchParams.get("charset") === "ascii" ? "ascii" : "unicode",
-    indicators
+    indicators,
+    range
   };
   const portfolio = holdingsResult.holdings
     ? buildPortfolio(prices, holdingsResult.holdings, currency, walletResult.portfolioMeta)
@@ -164,6 +254,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         : {
             currency: currency.toUpperCase(),
             cacheStatus,
+            range,
             prices,
             ...(walletResult.wallet ? { wallet: walletResult.wallet } : {}),
             ...(portfolio ? { portfolio } : {})
@@ -201,6 +292,104 @@ type WalletResult = {
   error?: string;
   status?: number;
 };
+
+function parseRange(input: string | null): { range: PriceRange; error?: string } {
+  if (!input) {
+    return { range: "7d" };
+  }
+
+  if (input === "1d" || input === "7d" || input === "30d") {
+    return { range: input };
+  }
+
+  return { range: "7d", error: "Invalid range. Use ?range=1d, ?range=7d, or ?range=30d" };
+}
+
+function resolveCompareAssets(pathname: string): { assets?: Asset[]; error?: string } {
+  const segments = pathname.split("/").filter(Boolean);
+  const compareInputs =
+    segments[0] === "compare"
+      ? segments.slice(1)
+      : segments.length === 1 && segments[0].includes(",")
+      ? segments[0].split(",")
+      : undefined;
+
+  if (!compareInputs) {
+    return {};
+  }
+
+  const parsed = parseAssetList(compareInputs.join(","));
+  if (parsed.unknown.length > 0) {
+    return { error: `Unknown asset${parsed.unknown.length === 1 ? "" : "s"}: ${parsed.unknown.join(", ")}` };
+  }
+
+  if (parsed.assets.length < 2) {
+    return { error: "Compare needs at least two assets, for example /compare/btc/eth or /btc,eth" };
+  }
+
+  return { assets: parsed.assets };
+}
+
+function renderTextFeed(
+  prices: MarketPrice[],
+  cacheStatus: "cached" | "fresh",
+  range: PriceRange
+): string {
+  const lines = prices.map((price) =>
+    [
+      price.symbol,
+      price.name,
+      formatFeedMoney(price.price, price.currency),
+      `24h ${formatFeedPercent(price.change24h)}`,
+      `volume ${formatFeedCompact(price.volume24h)}`,
+      `marketCap ${formatFeedCompact(price.marketCap)}`
+    ].join(" | ")
+  );
+
+  return [
+    `ascii-ticker feed | updated ${new Date().toISOString()} | range ${range} | cache ${cacheStatus}`,
+    ...lines
+  ].join("\n");
+}
+
+function renderRssFeed(prices: MarketPrice[], url: URL): string {
+  const updatedAt = new Date().toUTCString();
+  const items = prices
+    .map((price) => {
+      const title = `${price.symbol} ${formatFeedMoney(price.price, price.currency)} (${formatFeedPercent(price.change24h)} 24h)`;
+      const description = `${price.name} price ${formatFeedMoney(price.price, price.currency)}, 24h ${formatFeedPercent(price.change24h)}, volume ${formatFeedCompact(price.volume24h)}, market cap ${formatFeedCompact(price.marketCap)}.`;
+
+      return [
+        "    <item>",
+        `      <title>${escapeXml(title)}</title>`,
+        `      <link>${escapeXml(`${url.origin}/${price.symbol.toLowerCase()}`)}</link>`,
+        `      <guid isPermaLink="false">${escapeXml(`${price.id}:${price.updatedAt}`)}</guid>`,
+        `      <pubDate>${updatedAt}</pubDate>`,
+        `      <description>${escapeXml(description)}</description>`,
+        "    </item>"
+      ].join("\n");
+    })
+    .join("\n");
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<rss version="2.0">',
+    "  <channel>",
+    "    <title>ascii-ticker prices</title>",
+    `    <link>${escapeXml(url.origin)}</link>`,
+    "    <description>Terminal-first crypto price feed</description>",
+    `    <lastBuildDate>${updatedAt}</lastBuildDate>`,
+    items,
+    "  </channel>",
+    "</rss>"
+  ].join("\n");
+}
+
+function originBaseUrl(url: URL): string {
+  return url.origin === "http://localhost:8787"
+    ? "http://localhost:8787"
+    : "https://ascii-ticker.perezcerraluciano.workers.dev";
+}
 
 async function resolveWalletHoldings(url: URL, env: Env): Promise<WalletResult> {
   const address = url.searchParams.get("address");
@@ -549,4 +738,36 @@ function averagePresent(values: Array<number | null>): number | null {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function formatFeedMoney(value: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: value >= 1 ? 2 : 8
+  }).format(value);
+}
+
+function formatFeedPercent(value: number | null): string {
+  return value === null ? "n/a" : `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function formatFeedCompact(value: number | null): string {
+  if (value === null) {
+    return "n/a";
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 2
+  }).format(value);
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }

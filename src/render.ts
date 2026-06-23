@@ -1,4 +1,12 @@
-import type { LeadingIndicators, MarketPrice, PriceResult, SocialSentiment, StablecoinFlow } from "./coingecko.js";
+import type {
+  LeadingIndicators,
+  MarketPrice,
+  PriceRange,
+  PriceResult,
+  SocialSentiment,
+  StablecoinFlow,
+  TrendingCoin
+} from "./coingecko.js";
 
 const reset = "\u001b[0m";
 const bold = "\u001b[1m";
@@ -16,6 +24,7 @@ export type RenderOptions = {
   cacheStatus?: PriceResult["cacheStatus"];
   charset?: "unicode" | "ascii";
   indicators?: LeadingIndicators;
+  range?: PriceRange;
 };
 
 export type PortfolioPosition = {
@@ -44,10 +53,17 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     `${color("Usage", bold, ansi)}`,
     "  curl ascii-ticker.perezcerraluciano.workers.dev",
     "  curl ascii-ticker.perezcerraluciano.workers.dev/<asset>",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/compare/btc/eth",
     "",
     `${color("Routes", bold, ansi)}`,
     "  /             default tracked asset ticker",
     "  /<asset>      single asset card by symbol, id, or name",
+    "  /compare/a/b  compare two or more assets",
+    "  /a,b          compare two or more assets",
+    "  /trending     trending CoinGecko assets",
+    "  /install      shell alias/function snippet",
+    "  /feed.txt     plain text polling feed",
+    "  /rss.xml      RSS polling feed",
     "  /wallet/<address>  Ethereum wallet portfolio",
     "  /help         show this help screen",
     "  /api/prices   JSON prices for tracked assets",
@@ -60,6 +76,7 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     "  ?holdings=btc:0.25  portfolio mode with asset:amount pairs",
     "  ?address=0x...      Ethereum wallet portfolio lookup",
     "  ?chain=ethereum     wallet chain, currently ethereum only",
+    "  ?range=1d|7d|30d    sparkline range",
     "  ?charset=ascii      ASCII-only chart and box characters",
     "  ?color=never        disable ANSI color",
     "  ?format=json        return JSON for price routes",
@@ -69,6 +86,9 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,sol'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev?holdings=btc:0.25,eth:2.1'",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/trending",
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev/compare/btc/eth?range=30d'",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/install",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev/wallet/0x0000000000000000000000000000000000000000'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev?charset=ascii'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev/sol?format=json'",
@@ -77,6 +97,7 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     "  Wallet lookup supports Ethereum addresses only",
     "  Wallet lookup scans ETH, USDC, USDT, and LINK only",
     "  Wallet lookup requires ETHEREUM_RPC_URL to be configured",
+    "  Non-crypto assets are not supported by the current CoinGecko data source",
     "  NFT, LP, staking, lending, and debt positions are not included",
     "  Prices and sparklines depend on CoinGecko availability",
     "",
@@ -90,6 +111,7 @@ export function renderTerminal(prices: MarketPrice[], options: RenderOptions = {
   const cacheStatus = options.cacheStatus ?? "fresh";
   const ansi = options.ansi ?? true;
   const charset = options.charset ?? "unicode";
+  const range = options.range ?? "7d";
   const rows = prices.map((price) => {
     const changeColor = changeAnsi(price.change24h);
     const change = formatChange(price.change24h, charset);
@@ -103,10 +125,12 @@ export function renderTerminal(prices: MarketPrice[], options: RenderOptions = {
       renderSparkline(price.sparkline, 18, charset)
     ].join("  ");
   });
+  const pulse = formatMarketPulse(prices, ansi);
 
   return [
     `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("terminal crypto prices", dim, ansi)}`,
-    color(`updated ${now} | data: CoinGecko | cache: ${cacheStatus} (${cacheTtlMs}ms ttl)`, dim, ansi),
+    color(`updated ${now} | data: CoinGecko | range: ${range} | cache: ${cacheStatus} (${cacheTtlMs}ms ttl)`, dim, ansi),
+    pulse,
     "",
     [
       color("ASSET", bold, ansi),
@@ -114,11 +138,90 @@ export function renderTerminal(prices: MarketPrice[], options: RenderOptions = {
       color("PRICE".padStart(14), bold, ansi),
       color("24H".padStart(10), bold, ansi),
       color("VOLUME".padStart(12), bold, ansi),
-      color("7D", bold, ansi)
+      color(range.toUpperCase(), bold, ansi)
     ].join("  "),
     ...rows,
     "",
     color("try: curl localhost:8787/btc | curl 'localhost:8787?charset=ascii' | curl localhost:8787/eth?format=json", dim, ansi)
+  ].join("\n");
+}
+
+export function renderCompareTerminal(prices: MarketPrice[], options: RenderOptions = {}): string {
+  const ansi = options.ansi ?? true;
+  const charset = options.charset ?? "unicode";
+  const range = options.range ?? "7d";
+  const symbols = prices.map((price) => color(price.symbol.padStart(14), bold, ansi));
+  const metricRows = [
+    ["PRICE", ...prices.map((price) => formatMoney(price.price, price.currency).padStart(14))],
+    [
+      "24H",
+      ...prices.map((price) => color(formatChange(price.change24h, charset).padStart(14), changeAnsi(price.change24h), ansi))
+    ],
+    ["VOLUME", ...prices.map((price) => formatCompact(price.volume24h).padStart(14))],
+    ["MARKET CAP", ...prices.map((price) => formatCompact(price.marketCap).padStart(14))],
+    [
+      `${range.toUpperCase()} PERF`,
+      ...prices.map((price) => {
+        const performance = sparklinePerformance(price.sparkline);
+        return color(formatChange(performance, charset).padStart(14), changeAnsi(performance), ansi);
+      })
+    ],
+    [`${range.toUpperCase()} CHART`, ...prices.map((price) => renderSparkline(price.sparkline, 14, charset).padStart(14))]
+  ];
+
+  return [
+    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("compare", dim, ansi)}`,
+    color(`data: CoinGecko | range: ${range}`, dim, ansi),
+    "",
+    ["METRIC".padEnd(12), ...symbols].join("  "),
+    ...metricRows.map(([label, ...values]) => [color(label.padEnd(12), bold, ansi), ...values].join("  "))
+  ].join("\n");
+}
+
+export function renderTrendingTerminal(coins: TrendingCoin[], options: RenderOptions = {}): string {
+  const ansi = options.ansi ?? true;
+  const rows = coins.map((coin, index) =>
+    [
+      String(index + 1).padStart(2),
+      color(coin.symbol.padEnd(8), bold, ansi),
+      coin.name.padEnd(26),
+      formatRank(coin.marketCapRank).padStart(8),
+      String(coin.score).padStart(5)
+    ].join("  ")
+  );
+
+  return [
+    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("trending", dim, ansi)}`,
+    color("data: CoinGecko trending search", dim, ansi),
+    "",
+    [
+      color("#".padStart(2), bold, ansi),
+      color("SYMBOL".padEnd(8), bold, ansi),
+      color("NAME".padEnd(26), bold, ansi),
+      color("MC RANK".padStart(8), bold, ansi),
+      color("SCORE".padStart(5), bold, ansi)
+    ].join("  "),
+    ...rows
+  ].join("\n");
+}
+
+export function renderInstallSnippet(baseUrl = "https://ascii-ticker.perezcerraluciano.workers.dev"): string {
+  return [
+    "# Add to ~/.zshrc or ~/.bashrc",
+    `alias ticker='curl -sS ${baseUrl}'`,
+    `alias ticker-help='curl -sS ${baseUrl}/help'`,
+    "",
+    "ticker-asset() {",
+    `  curl -sS "${baseUrl}/$1"`,
+    "}",
+    "",
+    "ticker-compare() {",
+    `  curl -sS "${baseUrl}/compare/$1/$2"`,
+    "}",
+    "",
+    "ticker-wallet() {",
+    `  curl -sS "${baseUrl}/wallet/$1"`,
+    "}"
   ].join("\n");
 }
 
@@ -127,6 +230,7 @@ export function renderAssetTerminal(price: MarketPrice, options: RenderOptions =
   const charset = options.charset ?? "unicode";
   const cacheStatus = options.cacheStatus ?? "fresh";
   const cacheTtlMs = options.cacheTtlMs ?? "30000";
+  const range = options.range ?? "7d";
   const title = `${price.symbol} / ${price.name}`;
   const line = boxChars(charset);
   const sparkline = renderSparkline(price.sparkline, 30, charset);
@@ -142,7 +246,7 @@ export function renderAssetTerminal(price: MarketPrice, options: RenderOptions =
     boxRow("Volume", formatCompact(price.volume24h), assetCardWidth, line, ansi),
     boxRow("Source", source, assetCardWidth, line, ansi),
     `${line.leftJoin}${line.horizontal.repeat(assetCardWidth)}${line.rightJoin}`,
-    boxRow("7d", sparkline || "n/a", assetCardWidth, line, ansi),
+    boxRow(range, sparkline || "n/a", assetCardWidth, line, ansi),
     `${line.leftJoin}${line.horizontal.repeat(assetCardWidth)}${line.rightJoin}`,
     boxRow("Sentiment", sentimentValue, assetCardWidth, line, ansi),
     boxRow("Stables", stablecoinValue, assetCardWidth, line, ansi),
@@ -156,6 +260,7 @@ export function renderPortfolioTerminal(portfolio: PortfolioSummary, options: Re
   const cacheStatus = options.cacheStatus ?? "fresh";
   const ansi = options.ansi ?? true;
   const charset = options.charset ?? "unicode";
+  const range = options.range ?? "7d";
   const rows = portfolio.positions.map((position) => {
     const price = position.price;
     const changeColor = changeAnsi(position.price.change24h);
@@ -181,7 +286,7 @@ export function renderPortfolioTerminal(portfolio: PortfolioSummary, options: Re
       color("PRICE".padStart(14), bold, ansi),
       color("VALUE".padStart(14), bold, ansi),
       color("24H P/L".padStart(14), bold, ansi),
-      color("7D", bold, ansi)
+      color(range.toUpperCase(), bold, ansi)
     ].join("  "),
     ...rows,
     "",
@@ -200,8 +305,16 @@ export function renderAssetPlain(price: MarketPrice, options: RenderOptions = {}
   return stripAnsi(renderAssetTerminal(price, { ...options, ansi: false }));
 }
 
+export function renderComparePlain(prices: MarketPrice[], options: RenderOptions = {}): string {
+  return stripAnsi(renderCompareTerminal(prices, { ...options, ansi: false }));
+}
+
 export function renderPortfolioPlain(portfolio: PortfolioSummary, options: RenderOptions = {}): string {
   return stripAnsi(renderPortfolioTerminal(portfolio, { ...options, ansi: false }));
+}
+
+export function renderTrendingPlain(coins: TrendingCoin[], options: RenderOptions = {}): string {
+  return stripAnsi(renderTrendingTerminal(coins, { ...options, ansi: false }));
 }
 
 export function renderHelpPlain(options: RenderOptions = {}): string {
@@ -227,6 +340,10 @@ function formatCompact(value: number | null): string {
   }).format(value);
 }
 
+function formatRank(value: number | null): string {
+  return value === null ? "n/a" : `#${value}`;
+}
+
 function formatNullableMoney(value: number | null, currency: string): string {
   return value === null ? "n/a" : formatMoney(value, currency);
 }
@@ -238,6 +355,72 @@ function formatChange(value: number | null, charset: RenderOptions["charset"] = 
 
   const arrow = value > 0 ? (charset === "ascii" ? "^" : "▲") : value < 0 ? (charset === "ascii" ? "v" : "▼") : "-";
   return `${arrow} ${Math.abs(value).toFixed(2)}%`;
+}
+
+function sparklinePerformance(values: number[]): number | null {
+  const first = values.find(Number.isFinite);
+  const last = [...values].reverse().find(Number.isFinite);
+
+  if (first === undefined || last === undefined || first === 0) {
+    return null;
+  }
+
+  return ((last - first) / first) * 100;
+}
+
+function formatMarketPulse(prices: MarketPrice[], ansi: boolean): string {
+  const changes = prices
+    .map((price) => price.change24h)
+    .filter((change): change is number => change !== null);
+  const averageChange = changes.length ? changes.reduce((total, change) => total + change, 0) / changes.length : null;
+  const velocities = prices
+    .map((price) => (price.volume24h !== null && price.marketCap !== null && price.marketCap > 0 ? price.volume24h / price.marketCap : null))
+    .filter((velocity): velocity is number => velocity !== null);
+  const averageVelocity = velocities.length
+    ? velocities.reduce((total, velocity) => total + velocity, 0) / velocities.length
+    : null;
+  const btc = prices.find((price) => price.symbol === "BTC")?.change24h ?? null;
+  const eth = prices.find((price) => price.symbol === "ETH")?.change24h ?? null;
+  const stableChanges = prices
+    .filter((price) => price.symbol === "USDC" || price.symbol === "USDT")
+    .map((price) => price.change24h)
+    .filter((change): change is number => change !== null);
+  const stableAverage = stableChanges.length
+    ? stableChanges.reduce((total, change) => total + change, 0) / stableChanges.length
+    : null;
+  const label = pulseLabel(averageChange, btc, eth, stableAverage);
+  const colorCode = label === "risk-on" ? green : label === "risk-off" ? red : dim;
+
+  return [
+    color("pulse", bold, ansi),
+    color(label, colorCode, ansi),
+    `avg ${formatChange(averageChange)}`,
+    `btc ${formatChange(btc)}`,
+    `eth ${formatChange(eth)}`,
+    `stables ${formatChange(stableAverage)}`,
+    `velocity ${averageVelocity === null ? "n/a" : `${(averageVelocity * 100).toFixed(2)}%`}`
+  ].join(" | ");
+}
+
+function pulseLabel(
+  averageChange: number | null,
+  btcChange: number | null,
+  ethChange: number | null,
+  stableAverage: number | null
+): "risk-on" | "mixed" | "risk-off" {
+  const directional = [averageChange, btcChange, ethChange].filter((value): value is number => value !== null);
+  const score = directional.reduce((total, value) => total + Math.sign(value), 0);
+  const stableStress = stableAverage !== null && Math.abs(stableAverage) > 0.1;
+
+  if (score >= 2 && !stableStress) {
+    return "risk-on";
+  }
+
+  if (score <= -2 || stableStress) {
+    return "risk-off";
+  }
+
+  return "mixed";
 }
 
 function formatSignedMoney(value: number | null, currency: string): string {

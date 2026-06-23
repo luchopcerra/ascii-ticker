@@ -15,9 +15,19 @@ export type MarketPrice = {
   sparkline: number[];
 };
 
+export type PriceRange = "1d" | "7d" | "30d";
+
 export type PriceResult = {
   prices: MarketPrice[];
   cacheStatus: "cached" | "fresh";
+};
+
+export type TrendingCoin = {
+  id: string;
+  symbol: string;
+  name: string;
+  marketCapRank: number | null;
+  score: number;
 };
 
 export type SocialSentiment = {
@@ -56,9 +66,30 @@ type CoinGeckoMarket = {
   };
 };
 
+type CoinGeckoMarketChart = {
+  prices?: Array<[number, number]>;
+};
+
+type CoinGeckoTrendingResponse = {
+  coins?: Array<{
+    item?: {
+      id?: string;
+      symbol?: string;
+      name?: string;
+      market_cap_rank?: number | null;
+      score?: number;
+    };
+  }>;
+};
+
 type CacheEntry = {
   expiresAt: number;
   prices: MarketPrice[];
+};
+
+type TrendingCacheEntry = {
+  expiresAt: number;
+  coins: TrendingCoin[];
 };
 
 type IndicatorCacheEntry = {
@@ -68,7 +99,9 @@ type IndicatorCacheEntry = {
 
 const cache = new Map<string, CacheEntry>();
 const indicatorCache = new Map<string, IndicatorCacheEntry>();
+const trendingCache = new Map<string, TrendingCacheEntry>();
 const INDICATOR_CACHE_TTL_MS = 5 * 60_000;
+const TRENDING_CACHE_TTL_MS = 5 * 60_000;
 
 export type PriceEnv = {
   CACHE_TTL_MS?: string;
@@ -83,14 +116,16 @@ export type PriceEnv = {
 export async function getPrices(options: {
   requestedAssets?: Asset[];
   currency?: string;
+  range?: PriceRange;
   env?: PriceEnv;
 } = {}): Promise<PriceResult> {
   const requestedAssets = options.requestedAssets?.length ? options.requestedAssets : assets.slice(0, 8);
   const currency = (options.currency ?? "usd").toLowerCase();
+  const range = options.range ?? "7d";
   const cacheTtlMs = Number(options.env?.CACHE_TTL_MS ?? 30_000);
   const apiBaseUrl = options.env?.COINGECKO_API_URL ?? "https://api.coingecko.com/api/v3";
   const ids = requestedAssets.map((asset) => asset.id).join(",");
-  const cacheKey = `${currency}:${ids}`;
+  const cacheKey = `${currency}:${range}:${ids}`;
   const cached = cache.get(cacheKey);
 
   if (cached && cached.expiresAt > Date.now()) {
@@ -126,7 +161,7 @@ export async function getPrices(options: {
   }
 
   const payload = (await response.json()) as CoinGeckoMarket[];
-  const prices = payload.map((market) => ({
+  let prices = payload.map((market) => ({
     id: market.id,
     symbol: market.symbol.toUpperCase(),
     name: market.name,
@@ -141,12 +176,119 @@ export async function getPrices(options: {
     sparkline: market.sparkline_in_7d?.price ?? []
   }));
 
+  if (range !== "7d") {
+    prices = await withMarketChartSparklines({
+      prices,
+      range,
+      currency,
+      apiBaseUrl,
+      apiKey
+    });
+  }
+
   cache.set(cacheKey, {
     expiresAt: Date.now() + cacheTtlMs,
     prices
   });
 
   return { prices, cacheStatus: "fresh" };
+}
+
+export async function getTrendingCoins(options: {
+  env?: PriceEnv;
+  limit?: number;
+} = {}): Promise<TrendingCoin[]> {
+  const apiBaseUrl = options.env?.COINGECKO_API_URL ?? "https://api.coingecko.com/api/v3";
+  const cacheKey = `${apiBaseUrl}:trending:${options.limit ?? 10}`;
+  const cached = trendingCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.coins;
+  }
+
+  const url = new URL("/api/v3/search/trending", apiBaseUrl);
+  const apiKey = configuredValue(options.env?.COINGECKO_API_KEY);
+  if (apiKey) {
+    url.searchParams.set("x_cg_demo_api_key", apiKey);
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "ascii-ticker/0.1"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`CoinGecko trending returned ${response.status}`);
+  }
+
+  const payload = (await response.json()) as CoinGeckoTrendingResponse;
+  const coins = (payload.coins ?? [])
+    .map((coin, index) => {
+      const item = coin.item;
+      if (!item?.id || !item.symbol || !item.name) {
+        return undefined;
+      }
+
+      return {
+        id: item.id,
+        symbol: item.symbol.toUpperCase(),
+        name: item.name,
+        marketCapRank: item.market_cap_rank ?? null,
+        score: item.score ?? index
+      };
+    })
+    .filter((coin): coin is TrendingCoin => coin !== undefined)
+    .slice(0, options.limit ?? 10);
+
+  trendingCache.set(cacheKey, {
+    expiresAt: Date.now() + TRENDING_CACHE_TTL_MS,
+    coins
+  });
+
+  return coins;
+}
+
+async function withMarketChartSparklines(options: {
+  prices: MarketPrice[];
+  range: PriceRange;
+  currency: string;
+  apiBaseUrl: string;
+  apiKey?: string;
+}): Promise<MarketPrice[]> {
+  const days = options.range === "1d" ? "1" : "30";
+  const charts = await Promise.all(
+    options.prices.map(async (price) => {
+      const url = new URL(`/api/v3/coins/${price.id}/market_chart`, options.apiBaseUrl);
+      url.searchParams.set("vs_currency", options.currency);
+      url.searchParams.set("days", days);
+
+      if (options.apiKey) {
+        url.searchParams.set("x_cg_demo_api_key", options.apiKey);
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          accept: "application/json",
+          "user-agent": "ascii-ticker/0.1"
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`CoinGecko market chart returned ${response.status} for ${price.id}`);
+      }
+
+      const payload = (await response.json()) as CoinGeckoMarketChart;
+      const sparkline = (payload.prices ?? [])
+        .map((point) => point[1])
+        .filter(Number.isFinite);
+
+      return { ...price, sparkline };
+    })
+  );
+
+  return charts;
 }
 
 export async function getLeadingIndicators(options: {
