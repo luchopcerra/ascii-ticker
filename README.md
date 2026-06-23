@@ -25,6 +25,10 @@ curl https://ascii-ticker.perezcerraluciano.workers.dev/help
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,sol"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?holdings=btc:0.25,eth:2.1"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev/compare/btc/eth?range=30d"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev/trending"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev/feed.txt"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev/install"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/wallet/0x0000000000000000000000000000000000000000"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?charset=ascii"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/sol?format=json"
@@ -70,6 +74,12 @@ curl "http://localhost:8787/sol?format=json"
 - Symbol routes like `/btc`, `/eth`, `/sol`, `/usdc`.
 - Custom watchlists with `?assets=btc,eth,sol`.
 - Portfolio totals and 24h P/L with `?holdings=btc:0.25,eth:2.1`.
+- Compare view with `/compare/btc/eth` or `/btc,eth`.
+- Sparkline ranges with `?range=1d`, `?range=7d`, or `?range=30d`.
+- Trending assets with `/trending`.
+- Plain install snippet with `/install`.
+- Text and RSS polling feeds with `/feed.txt` and `/rss.xml`.
+- Market pulse row derived from 24h changes, BTC/ETH direction, volume velocity, and stablecoin drift.
 - Ethereum wallet portfolio lookup with `/wallet/<address>` or `?address=0x...`.
 - Currency override with `?currency=usd`, `?currency=eur`, etc.
 
@@ -88,6 +98,7 @@ Useful query parameters:
 - `?address=0x...`: extract supported Ethereum wallet holdings and render portfolio mode.
 - `?chain=ethereum`: wallet chain selector. Ethereum is currently the only supported chain.
 - `?currency=eur`: render prices and portfolio values in another currency.
+- `?range=1d|7d|30d`: choose the sparkline range. `1d` and `30d` fetch CoinGecko market chart data.
 - `?charset=ascii`: use ASCII-only chart and box characters.
 - `?color=never`: disable ANSI color.
 - `?format=json`: return JSON instead of terminal text.
@@ -101,9 +112,44 @@ Examples: `/btc`, `/bitcoin`, `/ethereum`, `/sol`.
 Useful query parameters:
 
 - `?currency=eur`: render prices in another currency.
+- `?range=1d|7d|30d`: choose the card sparkline range.
 - `?charset=ascii`: use ASCII-only chart and box characters.
 - `?color=never`: disable ANSI color.
 - `?format=json`: return JSON instead of terminal text.
+
+### `GET /compare/:asset/:asset`
+
+Compares two or more assets side by side. You can also use the compact alias `GET /btc,eth`.
+
+Examples:
+
+- `/compare/btc/eth`
+- `/compare/btc/eth/sol?range=30d`
+- `/btc,eth?range=1d`
+
+The compare view shows price, 24h change, volume, market cap, selected-range performance, and selected-range sparkline.
+
+### `GET /trending`
+
+Returns CoinGecko trending search assets in terminal-friendly text. Use `?format=json` or `Accept: application/json` for JSON.
+
+### `GET /install`
+
+Returns shell aliases/functions that wrap the public Worker URL.
+
+### `GET /feed.txt`
+
+Returns a plain text polling feed for the default or custom watchlist.
+
+Useful query parameters:
+
+- `?assets=btc,eth,sol`: feed a custom watchlist.
+- `?currency=eur`: quote prices in another currency.
+- `?range=1d|7d|30d`: choose the sparkline data range used while fetching.
+
+### `GET /rss.xml`
+
+Returns an RSS 2.0 polling feed for the default or custom watchlist.
 
 ### `GET /help`
 
@@ -142,6 +188,7 @@ Useful query parameters:
 - `?holdings=btc:0.25,eth:2.1`: return prices plus a `portfolio` object with positions, total value, and 24h P/L.
 - `?address=0x...`: return wallet metadata, prices, and a `portfolio` object for supported Ethereum balances.
 - `?currency=eur`: quote prices and portfolio values in another currency.
+- `?range=1d|7d|30d`: choose the sparkline range.
 
 ### `GET /api/assets`
 
@@ -195,3 +242,5 @@ Environment variables:
 ## Notes
 
 This project uses CoinGecko's public API. For production traffic, add a paid API key or a more robust provider, stronger caching, and rate-limit handling.
+
+Non-crypto assets such as stocks, ETFs, commodities, and forex pairs are not currently supported. The current data path is CoinGecko-only, so adding non-crypto markets would require a second market data provider and a clear symbol namespace such as `/stocks/aapl` or `/fx/eur-usd`.
