@@ -18,6 +18,40 @@ export type RenderOptions = {
   indicators?: LeadingIndicators;
 };
 
+export function renderHelpTerminal(options: RenderOptions = {}): string {
+  const ansi = options.ansi ?? true;
+
+  return [
+    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("terminal crypto prices", dim, ansi)}`,
+    "",
+    `${color("Usage", bold, ansi)}`,
+    "  curl ascii-ticker.perezcerraluciano.workers.dev",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/<asset>",
+    "",
+    `${color("Routes", bold, ansi)}`,
+    "  /             default tracked asset ticker",
+    "  /<asset>      single asset card by symbol, id, or name",
+    "  /help         show this help screen",
+    "  /api/prices   JSON prices for tracked assets",
+    "  /api/assets   supported asset aliases",
+    "  /health       health check",
+    "",
+    `${color("Options", bold, ansi)}`,
+    "  ?currency=usd   quote currency, for example eur or gbp",
+    "  ?charset=ascii  ASCII-only chart and box characters",
+    "  ?color=never    disable ANSI color",
+    "  ?format=json    return JSON for price routes",
+    "",
+    `${color("Examples", bold, ansi)}`,
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/btc",
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur'",
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev?charset=ascii'",
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev/sol?format=json'",
+    "",
+    color("Aliases: /help, /--help, /-h, ?help, ?--help, ?-h", dim, ansi)
+  ].join("\n");
+}
+
 export function renderTerminal(prices: MarketPrice[], options: RenderOptions = {}): string {
   const now = new Date().toISOString();
   const cacheTtlMs = options.cacheTtlMs ?? "30000";
@@ -90,6 +124,10 @@ export function renderPlain(prices: MarketPrice[], options: RenderOptions = {}):
 
 export function renderAssetPlain(price: MarketPrice, options: RenderOptions = {}): string {
   return stripAnsi(renderAssetTerminal(price, { ...options, ansi: false }));
+}
+
+export function renderHelpPlain(options: RenderOptions = {}): string {
+  return stripAnsi(renderHelpTerminal({ ...options, ansi: false }));
 }
 
 function formatMoney(value: number, currency: string): string {
