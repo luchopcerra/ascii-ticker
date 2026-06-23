@@ -8,6 +8,7 @@ import {
   type SocialSentiment,
   type StablecoinFlow
 } from "./coingecko.js";
+import { getEthereumWalletHoldings, isEthereumAddress, type WalletEnv } from "./ethereum-wallet.js";
 import {
   renderAssetPlain,
   renderAssetTerminal,
@@ -22,7 +23,7 @@ import {
   type RenderOptions
 } from "./render.js";
 
-type Env = PriceEnv;
+type Env = PriceEnv & WalletEnv;
 // Avoid division-by-zero when deriving a percent change from tiny sparkline baselines.
 const minPriceBaseline = 1e-10;
 // Heuristic fallback tuning for when optional indicator APIs are not configured:
@@ -67,7 +68,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname === "/api/prices") {
     const currency = url.searchParams.get("currency") ?? "usd";
-    const holdingsResult = parseHoldings(url.searchParams.get("holdings"));
+    const walletResult = await resolveWalletHoldings(url, env);
+    if (walletResult.error) {
+      return json({ error: walletResult.error }, walletResult.status ?? 400);
+    }
+
+    const holdingsResult = walletResult.holdings
+      ? { holdings: walletResult.holdings }
+      : parseHoldings(url.searchParams.get("holdings"));
     if (holdingsResult.error) {
       return json({ error: holdingsResult.error }, 400);
     }
@@ -82,12 +90,25 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       currency,
       env
     });
-    const portfolio = holdingsResult.holdings ? buildPortfolio(prices, holdingsResult.holdings, currency) : undefined;
+    const portfolio = holdingsResult.holdings
+      ? buildPortfolio(prices, holdingsResult.holdings, currency, walletResult.portfolioMeta)
+      : undefined;
 
-    return json({ currency: currency.toUpperCase(), cacheStatus, prices, ...(portfolio ? { portfolio } : {}) });
+    return json({
+      currency: currency.toUpperCase(),
+      cacheStatus,
+      prices,
+      ...(walletResult.wallet ? { wallet: walletResult.wallet } : {}),
+      ...(portfolio ? { portfolio } : {})
+    });
   }
 
-  const assetParam = pathAsset(url.pathname);
+  const walletAddress = pathWalletAddress(url.pathname);
+  if (walletAddress !== undefined) {
+    url.searchParams.set("address", walletAddress);
+  }
+
+  const assetParam = walletAddress === undefined ? pathAsset(url.pathname) : undefined;
   const asset = assetParam ? findAsset(assetParam) : undefined;
 
   if (assetParam && !asset) {
@@ -99,7 +120,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   const currency = url.searchParams.get("currency") ?? "usd";
   const format = url.searchParams.get("format");
-  const holdingsResult = parseHoldings(asset ? null : url.searchParams.get("holdings"));
+  const walletResult = asset ? {} : await resolveWalletHoldings(url, env);
+  if (walletResult.error) {
+    return json({ error: walletResult.error }, walletResult.status ?? 400);
+  }
+
+  const holdingsResult = walletResult.holdings
+    ? { holdings: walletResult.holdings }
+    : parseHoldings(asset ? null : url.searchParams.get("holdings"));
   if (holdingsResult.error) {
     return json({ error: holdingsResult.error }, 400);
   }
@@ -125,13 +153,21 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     charset: url.searchParams.get("charset") === "ascii" ? "ascii" : "unicode",
     indicators
   };
-  const portfolio = holdingsResult.holdings ? buildPortfolio(prices, holdingsResult.holdings, currency) : undefined;
+  const portfolio = holdingsResult.holdings
+    ? buildPortfolio(prices, holdingsResult.holdings, currency, walletResult.portfolioMeta)
+    : undefined;
 
   if (format === "json" || wantsJson(request)) {
     return json(
       asset
         ? { ...prices[0], cacheStatus, indicators }
-        : { currency: currency.toUpperCase(), cacheStatus, prices, ...(portfolio ? { portfolio } : {}) }
+        : {
+            currency: currency.toUpperCase(),
+            cacheStatus,
+            prices,
+            ...(walletResult.wallet ? { wallet: walletResult.wallet } : {}),
+            ...(portfolio ? { portfolio } : {})
+          }
     );
   }
 
@@ -148,6 +184,73 @@ type Holding = {
   asset: Asset;
   amount: number;
 };
+
+type PortfolioMeta = {
+  label?: string;
+  detail?: string;
+};
+
+type WalletResult = {
+  holdings?: Holding[];
+  wallet?: {
+    address: string;
+    chain: "ethereum";
+    assetsScanned: string[];
+  };
+  portfolioMeta?: PortfolioMeta;
+  error?: string;
+  status?: number;
+};
+
+async function resolveWalletHoldings(url: URL, env: Env): Promise<WalletResult> {
+  const address = url.searchParams.get("address");
+  if (!address) {
+    return {};
+  }
+
+  const chain = url.searchParams.get("chain") ?? "ethereum";
+  if (chain !== "ethereum") {
+    return { error: `Unsupported chain: ${chain}. Only ethereum is supported.`, status: 400 };
+  }
+
+  if (!isEthereumAddress(address)) {
+    return { error: "Invalid Ethereum address", status: 400 };
+  }
+
+  try {
+    const walletHoldings = await getEthereumWalletHoldings({ address, env });
+    if (walletHoldings.length === 0) {
+      return {
+        error: "No supported Ethereum balances found. Currently scans ETH, USDC, USDT, and LINK.",
+        status: 404
+      };
+    }
+
+    const holdings = walletHoldings.map((holding) => ({
+      asset: holding.asset,
+      amount: holding.amount
+    }));
+
+    return {
+      holdings,
+      wallet: {
+        address,
+        chain: "ethereum",
+        assetsScanned: assets
+          .filter((asset) => asset.ethereum)
+          .map((asset) => asset.symbol)
+      },
+      portfolioMeta: {
+        label: "ethereum wallet",
+        detail: `${shortAddress(address)} | ${holdings.length} priced balance${holdings.length === 1 ? "" : "s"} found`
+      }
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Ethereum wallet lookup failed";
+    const status = message.includes("ETHEREUM_RPC_URL") ? 503 : 502;
+    return { error: message, status };
+  }
+}
 
 function resolveWatchlist(
   assetsParam: string | null,
@@ -219,7 +322,12 @@ function parseHoldings(input: string | null): { holdings?: Holding[]; error?: st
   return { holdings: parsed };
 }
 
-function buildPortfolio(prices: MarketPrice[], holdings: Holding[], currency: string): PortfolioSummary {
+function buildPortfolio(
+  prices: MarketPrice[],
+  holdings: Holding[],
+  currency: string,
+  meta: PortfolioMeta = {}
+): PortfolioSummary {
   const pricesById = new Map(prices.map((price) => [price.id, price]));
   const positions: PortfolioPosition[] = holdings.flatMap((holding) => {
     const price = pricesById.get(holding.asset.id);
@@ -258,7 +366,8 @@ function buildPortfolio(prices: MarketPrice[], holdings: Holding[], currency: st
     totalValue,
     change24hValue,
     change24hPercent,
-    positions
+    positions,
+    ...meta
   };
 }
 
@@ -280,6 +389,20 @@ function pathAsset(pathname: string): string | undefined {
   }
 
   return segment;
+}
+
+function pathWalletAddress(pathname: string): string | undefined {
+  const segments = pathname.split("/").filter(Boolean);
+
+  if (segments[0] !== "wallet") {
+    return undefined;
+  }
+
+  return segments[1] ?? "";
+}
+
+function shortAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 function isHelpRequest(url: URL): boolean {
