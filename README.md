@@ -1,12 +1,12 @@
 # ascii-ticker
 
-Terminal-first market ticker for realtime crypto and digital asset prices over HTTP.
+Terminal-first market ticker for realtime crypto, stock, ETF, and index prices over HTTP.
 
-It is built to be used from a shell. The default response is text, with terminal graphics, ANSI color for curl/httpie/wget, 7-day sparklines, and cache freshness metadata.
+It is built to be used from a shell. Responses default to text, with terminal graphics, ANSI color for curl/httpie/wget, sparklines, and cache freshness metadata.
 
 ## Quick Start
 
-Copy and paste the command below into your terminal to get the default ticker:
+Copy and paste the command below into your terminal to discover available routes and examples:
 
 ### Bash / Zsh (cURL)
 ```bash
@@ -21,11 +21,16 @@ irm "https://ascii-ticker.perezcerraluciano.workers.dev"
 ```sh
 curl https://ascii-ticker.perezcerraluciano.workers.dev
 curl https://ascii-ticker.perezcerraluciano.workers.dev/btc
+curl https://ascii-ticker.perezcerraluciano.workers.dev/aapl
+curl https://ascii-ticker.perezcerraluciano.workers.dev/spy
+curl https://ascii-ticker.perezcerraluciano.workers.dev/aapl:nasdaq
 curl https://ascii-ticker.perezcerraluciano.workers.dev/help
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,sol"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,spy,qqq"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?holdings=btc:0.25,eth:2.1"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/compare/btc/eth?range=30d"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev/compare/aapl/msft/nvda"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/trending"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/feed.txt"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/install"
@@ -56,8 +61,10 @@ Local development:
 ```sh
 curl http://localhost:8787
 curl http://localhost:8787/btc
+curl http://localhost:8787/aapl
 curl http://localhost:8787/help
 curl "http://localhost:8787/eth?currency=eur"
+curl "http://localhost:8787?assets=btc,eth,spy,qqq"
 curl "http://localhost:8787?charset=ascii"
 curl "http://localhost:8787/sol?format=json"
 ```
@@ -65,14 +72,16 @@ curl "http://localhost:8787/sol?format=json"
 ## Features
 
 - Terminal-first text output with ANSI color for curl/httpie/wget.
-- Single-asset cards for routes like `/btc`.
-- 7-day sparklines in table and card output.
+- Root discovery screen at `/` with common examples and route pointers.
+- Single-asset cards for crypto routes like `/btc` and Google Finance routes like `/aapl`.
+- Explicit Google Finance ticker syntax with `/ticker:exchange`, for example `/aapl:nasdaq` or `/spy:nysearca`.
+- Sparkline output in table and card views.
 - ASCII fallback with `?charset=ascii`.
 - JSON API for apps and scripts.
 - Help output with `/help`, `/--help`, `/-h`, `?help`, `?--help`, or `?-h`.
 - Short in-memory cache to reduce upstream API calls, with `fresh`/`cached` metadata in responses.
-- Symbol routes like `/btc`, `/eth`, `/sol`, `/usdc`.
-- Custom watchlists with `?assets=btc,eth,sol`.
+- Symbol routes like `/btc`, `/eth`, `/sol`, `/usdc`, `/aapl`, `/spy`, `/qqq`.
+- Custom watchlists with `?assets=btc,eth,sol` or mixed markets like `?assets=btc,eth,spy,qqq`.
 - Portfolio totals and 24h P/L with `?holdings=btc:0.25,eth:2.1`.
 - Compare view with `/compare/btc/eth` or `/btc,eth`.
 - Sparkline ranges with `?range=1d`, `?range=7d`, or `?range=30d`.
@@ -82,6 +91,7 @@ curl "http://localhost:8787/sol?format=json"
 - Market pulse row derived from 24h changes, BTC/ETH direction, volume velocity, and stablecoin drift.
 - Ethereum wallet portfolio lookup with `/wallet/<address>` or `?address=0x...`.
 - Currency override with `?currency=usd`, `?currency=eur`, etc.
+- SerpAPI Google Finance integration for stocks, ETFs, indices, and dynamic ticker lookups.
 
 ## API
 
@@ -89,25 +99,38 @@ Base URL: `https://ascii-ticker.perezcerraluciano.workers.dev`
 
 ### `GET /`
 
-Returns a terminal-friendly table for the default tracked assets, including 7-day sparklines.
+Returns a terminal-friendly discovery screen with examples, route pointers, and data source notes.
+
+Use query parameters to turn `/` into a ticker view:
+
+```sh
+curl "https://ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,sol"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,spy,qqq"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev?holdings=btc:0.25,eth:2.1"
+```
 
 Useful query parameters:
 
-- `?assets=btc,eth,sol`: render a custom watchlist by symbol, CoinGecko id, or exact asset name.
+- `?assets=btc,eth,sol`: render a custom crypto watchlist by symbol, CoinGecko id, or exact asset name.
+- `?assets=btc,eth,spy,qqq`: render a mixed crypto, ETF, and stock watchlist.
 - `?holdings=btc:0.25,eth:2.1`: render portfolio mode with total value, per-asset value, and 24h P/L.
 - `?address=0x...`: extract supported Ethereum wallet holdings and render portfolio mode.
 - `?chain=ethereum`: wallet chain selector. Ethereum is currently the only supported chain.
 - `?currency=eur`: render prices and portfolio values in another currency.
-- `?range=1d|7d|30d`: choose the sparkline range. `1d` and `30d` fetch CoinGecko market chart data.
+- `?range=1d|7d|30d`: choose the sparkline range. CoinGecko uses market chart data; SerpAPI maps these to Google Finance windows.
 - `?charset=ascii`: use ASCII-only chart and box characters.
 - `?color=never`: disable ANSI color.
 - `?format=json`: return JSON instead of terminal text.
 
 ### `GET /:asset`
 
-Returns one asset by symbol, id, or name as a terminal card by default.
+Returns one asset or ticker by symbol, id, or name as a terminal card by default.
 
-Examples: `/btc`, `/bitcoin`, `/ethereum`, `/sol`.
+Crypto examples: `/btc`, `/bitcoin`, `/ethereum`, `/sol`.
+
+Registered Google Finance examples: `/aapl`, `/msft`, `/nvda`, `/spy`, `/qqq`, `/spx`.
+
+Dynamic Google Finance examples with exchange override: `/aapl:nasdaq`, `/brk.b:nyse`, `/spy:nysearca`, `/dji:indexdjx`.
 
 Useful query parameters:
 
@@ -125,6 +148,8 @@ Examples:
 
 - `/compare/btc/eth`
 - `/compare/btc/eth/sol?range=30d`
+- `/compare/aapl/msft/nvda`
+- `/compare/btc/eth/spy/qqq`
 - `/btc,eth?range=1d`
 
 The compare view shows price, 24h change, volume, market cap, selected-range performance, and selected-range sparkline.
@@ -143,7 +168,8 @@ Returns a plain text polling feed for the default or custom watchlist.
 
 Useful query parameters:
 
-- `?assets=btc,eth,sol`: feed a custom watchlist.
+- `?assets=btc,eth,sol`: feed a custom crypto watchlist.
+- `?assets=btc,eth,spy,qqq`: feed a mixed market watchlist.
 - `?currency=eur`: quote prices in another currency.
 - `?range=1d|7d|30d`: choose the sparkline data range used while fetching.
 
@@ -180,11 +206,12 @@ Current wallet lookup limitations:
 
 ### `GET /api/prices`
 
-Returns JSON for the default tracked assets, including `cacheStatus` and sparkline arrays.
+Returns JSON for the default crypto assets, or for a requested watchlist, including `cacheStatus` and sparkline arrays.
 
 Useful query parameters:
 
-- `?assets=btc,eth,sol`: return a custom watchlist.
+- `?assets=btc,eth,sol`: return a custom crypto watchlist.
+- `?assets=btc,eth,spy,qqq`: return a mixed crypto and traditional market watchlist.
 - `?holdings=btc:0.25,eth:2.1`: return prices plus a `portfolio` object with positions, total value, and 24h P/L.
 - `?address=0x...`: return wallet metadata, prices, and a `portfolio` object for supported Ethereum balances.
 - `?currency=eur`: quote prices and portfolio values in another currency.
@@ -192,7 +219,7 @@ Useful query parameters:
 
 ### `GET /api/assets`
 
-Returns the supported asset aliases.
+Returns supported asset aliases, including crypto assets and pre-registered SerpAPI Google Finance tickers.
 
 ### `GET /health`
 
@@ -209,6 +236,8 @@ Open another terminal:
 
 ```sh
 curl http://localhost:8787/btc
+curl http://localhost:8787/aapl
+curl "http://localhost:8787?assets=btc,eth,spy,qqq"
 ```
 
 Wrangler will print the local URL, usually `http://localhost:8787`.
@@ -237,10 +266,12 @@ Environment variables:
 
 - `CACHE_TTL_MS`: in-memory cache TTL. Default: `30000`.
 - `COINGECKO_API_URL`: upstream API base URL. Default: `https://api.coingecko.com/api/v3`.
+- `SERPAPI_API_URL`: SerpAPI search endpoint. Default: `https://serpapi.com/search`.
+- `SERPAPI_API_KEY`: SerpAPI key for Google Finance lookups. Configure it with `npx wrangler secret put SERPAPI_API_KEY` for deployed Workers, or `.dev.vars` for local development. Do not put this in `wrangler.jsonc`.
 - `ETHEREUM_RPC_URL`: Ethereum JSON-RPC HTTPS endpoint for wallet balance lookup. Configure it with `npx wrangler secret put ETHEREUM_RPC_URL` for deployed Workers, or `.dev.vars` for local development.
 
 ## Notes
 
-This project uses CoinGecko's public API. For production traffic, add a paid API key or a more robust provider, stronger caching, and rate-limit handling.
+Crypto data comes from CoinGecko. Stocks, ETFs, indices, and dynamic ticker lookups come from SerpAPI Google Finance and require `SERPAPI_API_KEY`.
 
-Non-crypto assets such as stocks, ETFs, commodities, and forex pairs are not currently supported. The current data path is CoinGecko-only, so adding non-crypto markets would require a second market data provider and a clear symbol namespace such as `/stocks/aapl` or `/fx/eur-usd`.
+For production traffic, use provider API keys, monitor rate limits, and tune `CACHE_TTL_MS` for your traffic pattern.

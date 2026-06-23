@@ -11,11 +11,14 @@ import {
   type StablecoinFlow
 } from "./coingecko.js";
 import { getEthereumWalletHoldings, isEthereumAddress, type WalletEnv } from "./ethereum-wallet.js";
+import { getFinancePrice, isFinanceTickerInput, type SerpapiEnv } from "./serpapi.js";
 import {
   renderAssetPlain,
   renderAssetTerminal,
   renderComparePlain,
   renderCompareTerminal,
+  renderDiscoveryPlain,
+  renderDiscoveryTerminal,
   renderHelpPlain,
   renderHelpTerminal,
   renderInstallSnippet,
@@ -30,7 +33,7 @@ import {
   type RenderOptions
 } from "./render.js";
 
-type Env = PriceEnv & WalletEnv;
+type Env = PriceEnv & WalletEnv & SerpapiEnv;
 // Avoid division-by-zero when deriving a percent change from tiny sparkline baselines.
 const minPriceBaseline = 1e-10;
 // Heuristic fallback tuning for when optional indicator APIs are not configured:
@@ -77,6 +80,37 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return new Response(`${renderInstallSnippet(originBaseUrl(url))}\n`, { headers: textHeaders() });
   }
 
+  if (isRootDiscoveryRequest(url)) {
+    const options: RenderOptions = {
+      ansi: wantsAnsi(request) && url.searchParams.get("color") !== "never"
+    };
+
+    if (url.searchParams.get("format") === "json" || wantsJson(request)) {
+      return json({
+        name: "ascii-ticker",
+        description: "Terminal-first market prices over HTTP",
+        dataSources: {
+          crypto: "CoinGecko",
+          traditionalMarkets: "SerpAPI Google Finance"
+        },
+        examples: [
+          "/btc",
+          "/aapl",
+          "/spy",
+          "/aapl:nasdaq",
+          "/api/assets",
+          "/trending",
+          "/help",
+          "/?assets=btc,eth,spy,qqq",
+          "/compare/btc/eth/spy"
+        ]
+      });
+    }
+
+    const body = options.ansi ? renderDiscoveryTerminal(options) : renderDiscoveryPlain(options);
+    return new Response(`${body}\n`, { headers: textHeaders() });
+  }
+
   const rangeResult = parseRange(url.searchParams.get("range"));
   if (rangeResult.error) {
     return json({ error: rangeResult.error }, 400);
@@ -103,7 +137,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       return json({ error: watchlistResult.error }, 400);
     }
 
-    const { prices, cacheStatus } = await getPrices({
+    const { prices, cacheStatus } = await getMarketPrices({
       requestedAssets: watchlistResult.assets,
       currency,
       range,
@@ -128,7 +162,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   }
   if (compareAssetsResult.assets) {
     const currency = url.searchParams.get("currency") ?? "usd";
-    const { prices, cacheStatus } = await getPrices({
+    const { prices, cacheStatus } = await getMarketPrices({
       requestedAssets: compareAssetsResult.assets,
       currency,
       range,
@@ -171,7 +205,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       return json({ error: watchlistResult.error }, 400);
     }
 
-    const { prices, cacheStatus } = await getPrices({
+    const { prices, cacheStatus } = await getMarketPrices({
       requestedAssets: watchlistResult.assets,
       currency,
       range,
@@ -198,9 +232,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   const assetParam = walletAddress === undefined ? pathAsset(url.pathname) : undefined;
   const asset = assetParam ? findAsset(assetParam) : undefined;
+  const dynamicFinanceTicker = assetParam && !asset && isFinanceTickerInput(assetParam) ? assetParam : undefined;
 
-  if (assetParam && !asset) {
-    return new Response(`Unknown asset: ${assetParam}\nTry /btc, /eth, /sol, /help, or /api/assets\n`, {
+  if (assetParam && !asset && !dynamicFinanceTicker) {
+    return new Response(`Unknown asset: ${assetParam}\nTry /btc, /eth, /sol, /aapl, /aapl:nasdaq, /help, or /api/assets\n`, {
       status: 404,
       headers: textHeaders()
     });
@@ -208,33 +243,35 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   const currency = url.searchParams.get("currency") ?? "usd";
   const format = url.searchParams.get("format");
-  const walletResult = asset ? {} : await resolveWalletHoldings(url, env);
+  const walletResult = asset || dynamicFinanceTicker ? {} : await resolveWalletHoldings(url, env);
   if (walletResult.error) {
     return json({ error: walletResult.error }, walletResult.status ?? 400);
   }
 
   const holdingsResult = walletResult.holdings
     ? { holdings: walletResult.holdings }
-    : parseHoldings(asset ? null : url.searchParams.get("holdings"));
+    : parseHoldings(asset || dynamicFinanceTicker ? null : url.searchParams.get("holdings"));
   if (holdingsResult.error) {
     return json({ error: holdingsResult.error }, 400);
   }
 
-  const watchlistResult = resolveWatchlist(asset ? null : url.searchParams.get("assets"), holdingsResult.holdings);
+  const watchlistResult = resolveWatchlist(asset || dynamicFinanceTicker ? null : url.searchParams.get("assets"), holdingsResult.holdings);
   if (watchlistResult.error) {
     return json({ error: watchlistResult.error }, 400);
   }
 
-  const { prices, cacheStatus } = await getPrices({
-    requestedAssets: asset ? [asset] : watchlistResult.assets,
-    currency,
-    range,
-    env
-  });
-  if (asset && prices.length === 0) {
+  const { prices, cacheStatus } = dynamicFinanceTicker
+    ? await getFinancePrice({ query: dynamicFinanceTicker, range, env })
+    : await getMarketPrices({
+        requestedAssets: asset ? [asset] : watchlistResult.assets,
+        currency,
+        range,
+        env
+      });
+  if (asset && !asset.serpapi && prices.length === 0) {
     throw new Error(`CoinGecko returned no market data for ${asset.symbol.toUpperCase()}; verify the asset is supported by CoinGecko and the CoinGecko API is available`);
   }
-  const indicators = asset ? withIndicatorFallbacks(prices[0], await getLeadingIndicators({ asset, env })) : undefined;
+  const indicators = asset && !asset.serpapi ? withIndicatorFallbacks(prices[0], await getLeadingIndicators({ asset, env })) : undefined;
   const renderOptions: RenderOptions = {
     ansi: wantsAnsi(request) && url.searchParams.get("color") !== "never",
     cacheTtlMs: env.CACHE_TTL_MS,
@@ -292,6 +329,52 @@ type WalletResult = {
   error?: string;
   status?: number;
 };
+
+async function getMarketPrices(options: {
+  requestedAssets?: Asset[];
+  currency?: string;
+  range?: PriceRange;
+  env: Env;
+}): Promise<{ prices: MarketPrice[]; cacheStatus: "cached" | "fresh" }> {
+  const requestedAssets = options.requestedAssets;
+  if (!requestedAssets?.length) {
+    return getPrices({
+      currency: options.currency,
+      range: options.range,
+      env: options.env
+    });
+  }
+
+  const coingeckoAssets = requestedAssets.filter((asset) => !asset.serpapi);
+  const serpapiAssets = requestedAssets.filter((asset) => asset.serpapi);
+  const serpapiQueries = serpapiAssets.flatMap((asset) => (asset.serpapi ? [asset.serpapi.ticker] : []));
+  const results = await Promise.all([
+    coingeckoAssets.length
+      ? getPrices({
+          requestedAssets: coingeckoAssets,
+          currency: options.currency,
+          range: options.range,
+          env: options.env
+        })
+      : Promise.resolve({ prices: [], cacheStatus: "cached" as const }),
+    ...serpapiQueries.map((query) => getFinancePrice({ query, range: options.range, env: options.env }))
+  ]);
+  const pricesById = new Map(results.flatMap((result) => result.prices.map((price) => [price.id, price])));
+  const pricesBySymbol = new Map(results.flatMap((result) => result.prices.map((price) => [price.symbol.toLowerCase(), price])));
+  const prices = requestedAssets.flatMap((asset) => {
+    if (asset.serpapi) {
+      const symbol = asset.serpapi.ticker.split(":", 1)[0].toLowerCase();
+      const price = pricesBySymbol.get(symbol);
+      return price ? [price] : [];
+    }
+
+    const price = pricesById.get(asset.id);
+    return price ? [price] : [];
+  });
+  const cacheStatus = results.every((result) => result.cacheStatus === "cached") ? "cached" : "fresh";
+
+  return { prices, cacheStatus };
+}
 
 function parseRange(input: string | null): { range: PriceRange; error?: string } {
   if (!input) {
@@ -377,7 +460,7 @@ function renderRssFeed(prices: MarketPrice[], url: URL): string {
     "  <channel>",
     "    <title>ascii-ticker prices</title>",
     `    <link>${escapeXml(url.origin)}</link>`,
-    "    <description>Terminal-first crypto price feed</description>",
+    "    <description>Terminal-first market price feed</description>",
     `    <lastBuildDate>${updatedAt}</lastBuildDate>`,
     items,
     "  </channel>",
@@ -604,6 +687,11 @@ function isHelpRequest(url: URL): boolean {
     url.searchParams.has("--help") ||
     url.searchParams.has("-h")
   );
+}
+
+function isRootDiscoveryRequest(url: URL): boolean {
+  const pathname = url.pathname.replace(/\/+$/, "") || "/";
+  return pathname === "/" && !url.searchParams.has("assets") && !url.searchParams.has("holdings") && !url.searchParams.has("address");
 }
 
 function wantsJson(request: Request): boolean {
