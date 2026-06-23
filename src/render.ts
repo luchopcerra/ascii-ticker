@@ -48,7 +48,7 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
   const ansi = options.ansi ?? true;
 
   return [
-    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("terminal crypto prices", dim, ansi)}`,
+    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("terminal market prices", dim, ansi)}`,
     "",
     `${color("Usage", bold, ansi)}`,
     "  curl ascii-ticker.perezcerraluciano.workers.dev",
@@ -58,16 +58,17 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     `${color("Routes", bold, ansi)}`,
     "  /             default tracked asset ticker",
     "  /<asset>      single asset card by symbol, id, or name",
+    "  /ticker:exch  single Google Finance ticker with exchange override",
     "  /compare/a/b  compare two or more assets",
     "  /a,b          compare two or more assets",
-    "  /trending     trending CoinGecko assets",
+    "  /trending     trending CoinGecko crypto assets",
     "  /install      shell alias/function snippet",
     "  /feed.txt     plain text polling feed",
     "  /rss.xml      RSS polling feed",
     "  /wallet/<address>  Ethereum wallet portfolio",
     "  /help         show this help screen",
     "  /api/prices   JSON prices for tracked assets",
-    "  /api/assets   supported asset aliases",
+    "  /api/assets   supported asset and ticker aliases",
     "  /health       health check",
     "",
     `${color("Options", bold, ansi)}`,
@@ -83,6 +84,9 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     "",
     `${color("Examples", bold, ansi)}`,
     "  curl ascii-ticker.perezcerraluciano.workers.dev/btc",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/aapl",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/spy",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/aapl:nasdaq",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,sol'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev?holdings=btc:0.25,eth:2.1'",
@@ -97,11 +101,41 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     "  Wallet lookup supports Ethereum addresses only",
     "  Wallet lookup scans ETH, USDC, USDT, and LINK only",
     "  Wallet lookup requires ETHEREUM_RPC_URL to be configured",
-    "  Non-crypto assets are not supported by the current CoinGecko data source",
+    "  Non-crypto assets require SERPAPI_API_KEY to be configured as a Worker secret",
     "  NFT, LP, staking, lending, and debt positions are not included",
-    "  Prices and sparklines depend on CoinGecko availability",
+    "  Prices and sparklines depend on CoinGecko and SerpAPI availability",
     "",
     color("Aliases: /help, /--help, /-h, ?help, ?--help, ?-h", dim, ansi)
+  ].join("\n");
+}
+
+export function renderDiscoveryTerminal(options: RenderOptions = {}): string {
+  const ansi = options.ansi ?? true;
+
+  return [
+    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("market discovery for terminals", dim, ansi)}`,
+    "",
+    `${color("Start here", bold, ansi)}`,
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/btc",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/aapl",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/spy",
+    "  curl ascii-ticker.perezcerraluciano.workers.dev/aapl:nasdaq",
+    "",
+    `${color("Browse", bold, ansi)}`,
+    "  /api/assets     supported crypto, stocks, ETFs, and indices",
+    "  /trending       trending CoinGecko crypto assets",
+    "  /help           full route and option reference",
+    "",
+    `${color("Build a ticker", bold, ansi)}`,
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,spy,qqq'",
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev/compare/btc/eth/spy'",
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev/api/prices?assets=aapl,msft,nvda&format=json'",
+    "",
+    `${color("Data sources", bold, ansi)}`,
+    "  Crypto: CoinGecko",
+    "  Stocks, ETFs, indices, and dynamic tickers: SerpAPI Google Finance",
+    "",
+    color("Tip: use /ticker:exchange for explicit Google Finance symbols, for example /brk.b:nyse or /spy:nysearca", dim, ansi)
   ].join("\n");
 }
 
@@ -128,8 +162,8 @@ export function renderTerminal(prices: MarketPrice[], options: RenderOptions = {
   const pulse = formatMarketPulse(prices, ansi);
 
   return [
-    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("terminal crypto prices", dim, ansi)}`,
-    color(`updated ${now} | data: CoinGecko | range: ${range} | cache: ${cacheStatus} (${cacheTtlMs}ms ttl)`, dim, ansi),
+    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("terminal market prices", dim, ansi)}`,
+    color(`updated ${now} | data: ${sourceLabel(prices)} | range: ${range} | cache: ${cacheStatus} (${cacheTtlMs}ms ttl)`, dim, ansi),
     pulse,
     "",
     [
@@ -171,7 +205,7 @@ export function renderCompareTerminal(prices: MarketPrice[], options: RenderOpti
 
   return [
     `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("compare", dim, ansi)}`,
-    color(`data: CoinGecko | range: ${range}`, dim, ansi),
+    color(`data: ${sourceLabel(prices)} | range: ${range}`, dim, ansi),
     "",
     ["METRIC".padEnd(12), ...symbols].join("  "),
     ...metricRows.map(([label, ...values]) => [color(label.padEnd(12), bold, ansi), ...values].join("  "))
@@ -234,7 +268,7 @@ export function renderAssetTerminal(price: MarketPrice, options: RenderOptions =
   const title = `${price.symbol} / ${price.name}`;
   const line = boxChars(charset);
   const sparkline = renderSparkline(price.sparkline, 30, charset);
-  const source = `CoinGecko, ${cacheStatus}, ${cacheTtlMs}ms ttl`;
+  const source = `${sourceLabel([price])}, ${cacheStatus}, ${cacheTtlMs}ms ttl`;
   const sentimentValue = formatSentimentRow(options.indicators?.sentiment, options);
   const stablecoinValue = formatStablecoinFlowRow(options.indicators?.stablecoinFlow, options);
 
@@ -277,7 +311,7 @@ export function renderPortfolioTerminal(portfolio: PortfolioSummary, options: Re
 
   return [
     `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color(portfolio.label ?? "portfolio", dim, ansi)}`,
-    color(`updated ${now} | data: CoinGecko | cache: ${cacheStatus} (${cacheTtlMs}ms ttl)`, dim, ansi),
+    color(`updated ${now} | data: ${sourceLabel(portfolio.positions.map((position) => position.price))} | cache: ${cacheStatus} (${cacheTtlMs}ms ttl)`, dim, ansi),
     ...(portfolio.detail ? [color(portfolio.detail, dim, ansi)] : []),
     "",
     [
@@ -299,6 +333,10 @@ export function renderPortfolioTerminal(portfolio: PortfolioSummary, options: Re
 
 export function renderPlain(prices: MarketPrice[], options: RenderOptions = {}): string {
   return stripAnsi(renderTerminal(prices, { ...options, ansi: false }));
+}
+
+export function renderDiscoveryPlain(options: RenderOptions = {}): string {
+  return stripAnsi(renderDiscoveryTerminal({ ...options, ansi: false }));
 }
 
 export function renderAssetPlain(price: MarketPrice, options: RenderOptions = {}): string {
@@ -327,6 +365,17 @@ function formatMoney(value: number, currency: string): string {
     currency,
     maximumFractionDigits: value >= 1 ? 2 : 8
   }).format(value);
+}
+
+function sourceLabel(prices: MarketPrice[]): string {
+  const hasSerpapi = prices.some((price) => price.id.startsWith("serpapi:"));
+  const hasCoinGecko = prices.some((price) => !price.id.startsWith("serpapi:"));
+
+  if (hasSerpapi && hasCoinGecko) {
+    return "CoinGecko + SerpAPI Google Finance";
+  }
+
+  return hasSerpapi ? "SerpAPI Google Finance" : "CoinGecko";
 }
 
 function formatCompact(value: number | null): string {

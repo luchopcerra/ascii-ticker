@@ -1,4 +1,4 @@
-import { assets, type Asset } from "./assets.js";
+import { cryptoAssets, type Asset } from "./assets.js";
 
 export type MarketPrice = {
   id: string;
@@ -119,7 +119,7 @@ export async function getPrices(options: {
   range?: PriceRange;
   env?: PriceEnv;
 } = {}): Promise<PriceResult> {
-  const requestedAssets = options.requestedAssets?.length ? options.requestedAssets : assets;
+  const requestedAssets = options.requestedAssets?.length ? options.requestedAssets : cryptoAssets;
   const currency = (options.currency ?? "usd").toLowerCase();
   const range = options.range ?? "7d";
   const cacheTtlMs = Number(options.env?.CACHE_TTL_MS ?? 30_000);

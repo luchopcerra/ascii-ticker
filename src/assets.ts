@@ -2,6 +2,9 @@ export type Asset = {
   id: string;
   symbol: string;
   name: string;
+  serpapi?: {
+    ticker: string;
+  };
   ethereum?: {
     contractAddress?: `0x${string}`;
     decimals: number;
@@ -56,8 +59,27 @@ export const assets: Asset[] = [
       contractAddress: "0xdac17f958d2ee523a2206206994597c13d831ec7",
       decimals: 6
     }
-  }
+  },
+  { id: "apple", symbol: "aapl", name: "Apple", serpapi: { ticker: "AAPL:NASDAQ" } },
+  { id: "microsoft", symbol: "msft", name: "Microsoft", serpapi: { ticker: "MSFT:NASDAQ" } },
+  { id: "alphabet-a", symbol: "googl", name: "Alphabet Class A", serpapi: { ticker: "GOOGL:NASDAQ" } },
+  { id: "alphabet-c", symbol: "goog", name: "Alphabet Class C", serpapi: { ticker: "GOOG:NASDAQ" } },
+  { id: "amazon", symbol: "amzn", name: "Amazon", serpapi: { ticker: "AMZN:NASDAQ" } },
+  { id: "nvidia", symbol: "nvda", name: "NVIDIA", serpapi: { ticker: "NVDA:NASDAQ" } },
+  { id: "tesla", symbol: "tsla", name: "Tesla", serpapi: { ticker: "TSLA:NASDAQ" } },
+  { id: "meta", symbol: "meta", name: "Meta Platforms", serpapi: { ticker: "META:NASDAQ" } },
+  { id: "netflix", symbol: "nflx", name: "Netflix", serpapi: { ticker: "NFLX:NASDAQ" } },
+  { id: "berkshire-b", symbol: "brk.b", name: "Berkshire Hathaway Class B", serpapi: { ticker: "BRK.B:NYSE" } },
+  { id: "spdr-sp-500-etf", symbol: "spy", name: "SPDR S&P 500 ETF", serpapi: { ticker: "SPY:NYSEARCA" } },
+  { id: "vanguard-sp-500-etf", symbol: "voo", name: "Vanguard S&P 500 ETF", serpapi: { ticker: "VOO:NYSEARCA" } },
+  { id: "invesco-qqq", symbol: "qqq", name: "Invesco QQQ", serpapi: { ticker: "QQQ:NASDAQ" } },
+  { id: "ishares-russell-2000", symbol: "iwm", name: "iShares Russell 2000 ETF", serpapi: { ticker: "IWM:NYSEARCA" } },
+  { id: "dow-jones", symbol: "dji", name: "Dow Jones", serpapi: { ticker: ".DJI:INDEXDJX" } },
+  { id: "sp-500", symbol: "spx", name: "S&P 500", serpapi: { ticker: ".INX:INDEXSP" } },
+  { id: "nasdaq-composite", symbol: "ixic", name: "NASDAQ Composite", serpapi: { ticker: ".IXIC:INDEXNASDAQ" } }
 ];
+
+export const cryptoAssets = assets.filter((asset) => !asset.serpapi);
 
 export function findAsset(input: string): Asset | undefined {
   const normalized = input.toLowerCase().trim();
