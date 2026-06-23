@@ -119,7 +119,7 @@ export async function getPrices(options: {
   range?: PriceRange;
   env?: PriceEnv;
 } = {}): Promise<PriceResult> {
-  const requestedAssets = options.requestedAssets?.length ? options.requestedAssets : assets.slice(0, 8);
+  const requestedAssets = options.requestedAssets?.length ? options.requestedAssets : assets;
   const currency = (options.currency ?? "usd").toLowerCase();
   const range = options.range ?? "7d";
   const cacheTtlMs = Number(options.env?.CACHE_TTL_MS ?? 30_000);
