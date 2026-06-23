@@ -1,4 +1,4 @@
-import { assets, findAsset } from "./assets.js";
+import { assets, findAsset, parseAssetList, type Asset } from "./assets.js";
 import {
   getLeadingIndicators,
   getPrices,
@@ -14,7 +14,11 @@ import {
   renderHelpPlain,
   renderHelpTerminal,
   renderPlain,
+  renderPortfolioPlain,
+  renderPortfolioTerminal,
   renderTerminal,
+  type PortfolioPosition,
+  type PortfolioSummary,
   type RenderOptions
 } from "./render.js";
 
@@ -63,9 +67,24 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname === "/api/prices") {
     const currency = url.searchParams.get("currency") ?? "usd";
-    const { prices, cacheStatus } = await getPrices({ currency, env });
+    const holdingsResult = parseHoldings(url.searchParams.get("holdings"));
+    if (holdingsResult.error) {
+      return json({ error: holdingsResult.error }, 400);
+    }
 
-    return json({ currency: currency.toUpperCase(), cacheStatus, prices });
+    const watchlistResult = resolveWatchlist(url.searchParams.get("assets"), holdingsResult.holdings);
+    if (watchlistResult.error) {
+      return json({ error: watchlistResult.error }, 400);
+    }
+
+    const { prices, cacheStatus } = await getPrices({
+      requestedAssets: watchlistResult.assets,
+      currency,
+      env
+    });
+    const portfolio = holdingsResult.holdings ? buildPortfolio(prices, holdingsResult.holdings, currency) : undefined;
+
+    return json({ currency: currency.toUpperCase(), cacheStatus, prices, ...(portfolio ? { portfolio } : {}) });
   }
 
   const assetParam = pathAsset(url.pathname);
@@ -80,8 +99,18 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   const currency = url.searchParams.get("currency") ?? "usd";
   const format = url.searchParams.get("format");
+  const holdingsResult = parseHoldings(asset ? null : url.searchParams.get("holdings"));
+  if (holdingsResult.error) {
+    return json({ error: holdingsResult.error }, 400);
+  }
+
+  const watchlistResult = resolveWatchlist(asset ? null : url.searchParams.get("assets"), holdingsResult.holdings);
+  if (watchlistResult.error) {
+    return json({ error: watchlistResult.error }, 400);
+  }
+
   const { prices, cacheStatus } = await getPrices({
-    requestedAssets: asset ? [asset] : undefined,
+    requestedAssets: asset ? [asset] : watchlistResult.assets,
     currency,
     env
   });
@@ -96,16 +125,151 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     charset: url.searchParams.get("charset") === "ascii" ? "ascii" : "unicode",
     indicators
   };
+  const portfolio = holdingsResult.holdings ? buildPortfolio(prices, holdingsResult.holdings, currency) : undefined;
 
   if (format === "json" || wantsJson(request)) {
-    return json(asset ? { ...prices[0], cacheStatus, indicators } : { currency: currency.toUpperCase(), cacheStatus, prices });
+    return json(
+      asset
+        ? { ...prices[0], cacheStatus, indicators }
+        : { currency: currency.toUpperCase(), cacheStatus, prices, ...(portfolio ? { portfolio } : {}) }
+    );
   }
 
-  const body = asset
+  const body = portfolio
+    ? `${renderOptions.ansi ? renderPortfolioTerminal(portfolio, renderOptions) : renderPortfolioPlain(portfolio, renderOptions)}\n`
+    : asset
     ? `${renderOptions.ansi ? renderAssetTerminal(prices[0], renderOptions) : renderAssetPlain(prices[0], renderOptions)}\n`
     : `${renderOptions.ansi ? renderTerminal(prices, renderOptions) : renderPlain(prices, renderOptions)}\n`;
 
   return new Response(body, { headers: textHeaders() });
+}
+
+type Holding = {
+  asset: Asset;
+  amount: number;
+};
+
+function resolveWatchlist(
+  assetsParam: string | null,
+  holdings: Holding[] | undefined
+): { assets?: Asset[]; error?: string } {
+  if (holdings) {
+    return { assets: holdings.map((holding) => holding.asset) };
+  }
+
+  if (!assetsParam) {
+    return {};
+  }
+
+  const parsed = parseAssetList(assetsParam);
+  if (parsed.unknown.length > 0) {
+    return { error: `Unknown asset${parsed.unknown.length === 1 ? "" : "s"}: ${parsed.unknown.join(", ")}` };
+  }
+
+  if (parsed.assets.length === 0) {
+    return { error: "Provide at least one asset in ?assets=btc,eth" };
+  }
+
+  return { assets: parsed.assets };
+}
+
+function parseHoldings(input: string | null): { holdings?: Holding[]; error?: string } {
+  if (!input) {
+    return {};
+  }
+
+  const holdings = new Map<string, Holding>();
+
+  for (const token of input.split(",")) {
+    const holdingInput = token.trim();
+    if (!holdingInput) {
+      continue;
+    }
+
+    const separator = holdingInput.indexOf(":");
+    if (separator === -1) {
+      return { error: `Invalid holding "${holdingInput}". Use asset:amount, for example btc:0.25` };
+    }
+
+    const assetInput = holdingInput.slice(0, separator).trim();
+    const amountInput = holdingInput.slice(separator + 1).trim();
+    const asset = findAsset(assetInput);
+    const amount = Number(amountInput);
+
+    if (!asset) {
+      return { error: `Unknown asset: ${assetInput}` };
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { error: `Invalid amount for ${assetInput}: ${amountInput}` };
+    }
+
+    const existing = holdings.get(asset.id);
+    holdings.set(asset.id, {
+      asset,
+      amount: (existing?.amount ?? 0) + amount
+    });
+  }
+
+  const parsed = [...holdings.values()];
+  if (parsed.length === 0) {
+    return { error: "Provide at least one holding in ?holdings=btc:0.25,eth:2.1" };
+  }
+
+  return { holdings: parsed };
+}
+
+function buildPortfolio(prices: MarketPrice[], holdings: Holding[], currency: string): PortfolioSummary {
+  const pricesById = new Map(prices.map((price) => [price.id, price]));
+  const positions: PortfolioPosition[] = holdings.flatMap((holding) => {
+    const price = pricesById.get(holding.asset.id);
+    if (!price) {
+      return [];
+    }
+
+    const value = holding.amount * price.price;
+    const change24hValue = calculatePositionChange24h(value, price.change24h);
+
+    return [
+      {
+        price,
+        amount: holding.amount,
+        value,
+        change24hValue
+      }
+    ];
+  });
+  const totalValue = positions.reduce((total, position) => total + position.value, 0);
+  const presentChanges = positions
+    .map((position) => position.change24hValue)
+    .filter((change): change is number => change !== null);
+  const change24hValue =
+    presentChanges.length === positions.length
+      ? presentChanges.reduce((total, change) => total + change, 0)
+      : null;
+  let change24hPercent: number | null = null;
+  if (change24hValue !== null) {
+    const previousValue = totalValue - change24hValue;
+    change24hPercent = Math.abs(previousValue) < minPriceBaseline ? null : (change24hValue / previousValue) * 100;
+  }
+
+  return {
+    currency: currency.toUpperCase(),
+    totalValue,
+    change24hValue,
+    change24hPercent,
+    positions
+  };
+}
+
+function calculatePositionChange24h(value: number, change24hPercent: number | null): number | null {
+  if (change24hPercent === null) {
+    return null;
+  }
+
+  const previousValue = value / (1 + change24hPercent / 100);
+
+  return value - previousValue;
 }
 
 function pathAsset(pathname: string): string | undefined {

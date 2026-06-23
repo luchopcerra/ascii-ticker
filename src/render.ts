@@ -18,6 +18,21 @@ export type RenderOptions = {
   indicators?: LeadingIndicators;
 };
 
+export type PortfolioPosition = {
+  price: MarketPrice;
+  amount: number;
+  value: number;
+  change24hValue: number | null;
+};
+
+export type PortfolioSummary = {
+  currency: string;
+  totalValue: number;
+  change24hValue: number | null;
+  change24hPercent: number | null;
+  positions: PortfolioPosition[];
+};
+
 export function renderHelpTerminal(options: RenderOptions = {}): string {
   const ansi = options.ansi ?? true;
 
@@ -37,14 +52,18 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     "  /health       health check",
     "",
     `${color("Options", bold, ansi)}`,
-    "  ?currency=usd   quote currency, for example eur or gbp",
-    "  ?charset=ascii  ASCII-only chart and box characters",
-    "  ?color=never    disable ANSI color",
-    "  ?format=json    return JSON for price routes",
+    "  ?currency=usd       quote currency, for example eur or gbp",
+    "  ?assets=btc,eth     custom watchlist for / and /api/prices",
+    "  ?holdings=btc:0.25  portfolio mode with asset:amount pairs",
+    "  ?charset=ascii      ASCII-only chart and box characters",
+    "  ?color=never        disable ANSI color",
+    "  ?format=json        return JSON for price routes",
     "",
     `${color("Examples", bold, ansi)}`,
     "  curl ascii-ticker.perezcerraluciano.workers.dev/btc",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur'",
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,sol'",
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev?holdings=btc:0.25,eth:2.1'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev?charset=ascii'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev/sol?format=json'",
     "",
@@ -118,12 +137,57 @@ export function renderAssetTerminal(price: MarketPrice, options: RenderOptions =
   ].join("\n");
 }
 
+export function renderPortfolioTerminal(portfolio: PortfolioSummary, options: RenderOptions = {}): string {
+  const now = new Date().toISOString();
+  const cacheTtlMs = options.cacheTtlMs ?? "30000";
+  const cacheStatus = options.cacheStatus ?? "fresh";
+  const ansi = options.ansi ?? true;
+  const charset = options.charset ?? "unicode";
+  const rows = portfolio.positions.map((position) => {
+    const price = position.price;
+    const changeColor = changeAnsi(position.price.change24h);
+
+    return [
+      color(price.symbol.padEnd(5), bold, ansi),
+      formatAmount(position.amount).padStart(12),
+      formatMoney(price.price, price.currency).padStart(14),
+      formatMoney(position.value, price.currency).padStart(14),
+      color(formatSignedMoney(position.change24hValue, price.currency).padStart(14), changeColor, ansi),
+      renderSparkline(price.sparkline, 16, charset)
+    ].join("  ");
+  });
+
+  return [
+    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("portfolio", dim, ansi)}`,
+    color(`updated ${now} | data: CoinGecko | cache: ${cacheStatus} (${cacheTtlMs}ms ttl)`, dim, ansi),
+    "",
+    [
+      color("ASSET", bold, ansi),
+      color("AMOUNT".padStart(12), bold, ansi),
+      color("PRICE".padStart(14), bold, ansi),
+      color("VALUE".padStart(14), bold, ansi),
+      color("24H P/L".padStart(14), bold, ansi),
+      color("7D", bold, ansi)
+    ].join("  "),
+    ...rows,
+    "",
+    `${color("Total", bold, ansi)} ${formatMoney(portfolio.totalValue, portfolio.currency)}`,
+    `${color("24h", bold, ansi)}   ${color(`${formatSignedMoney(portfolio.change24hValue, portfolio.currency)} (${formatChange(portfolio.change24hPercent, charset)})`, changeAnsi(portfolio.change24hPercent), ansi)}`,
+    "",
+    color("try: curl 'localhost:8787?holdings=btc:0.25,eth:2.1' | curl 'localhost:8787/api/prices?holdings=btc:0.25,eth:2.1'", dim, ansi)
+  ].join("\n");
+}
+
 export function renderPlain(prices: MarketPrice[], options: RenderOptions = {}): string {
   return stripAnsi(renderTerminal(prices, { ...options, ansi: false }));
 }
 
 export function renderAssetPlain(price: MarketPrice, options: RenderOptions = {}): string {
   return stripAnsi(renderAssetTerminal(price, { ...options, ansi: false }));
+}
+
+export function renderPortfolioPlain(portfolio: PortfolioSummary, options: RenderOptions = {}): string {
+  return stripAnsi(renderPortfolioTerminal(portfolio, { ...options, ansi: false }));
 }
 
 export function renderHelpPlain(options: RenderOptions = {}): string {
@@ -160,6 +224,21 @@ function formatChange(value: number | null, charset: RenderOptions["charset"] = 
 
   const arrow = value > 0 ? (charset === "ascii" ? "^" : "▲") : value < 0 ? (charset === "ascii" ? "v" : "▼") : "-";
   return `${arrow} ${Math.abs(value).toFixed(2)}%`;
+}
+
+function formatSignedMoney(value: number | null, currency: string): string {
+  if (value === null) {
+    return "n/a";
+  }
+
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${formatMoney(Math.abs(value), currency)}`;
+}
+
+function formatAmount(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 8
+  }).format(value);
 }
 
 function formatSentimentRow(sentiment: SocialSentiment | undefined, options: RenderOptions): string {

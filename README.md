@@ -23,6 +23,8 @@ curl https://ascii-ticker.perezcerraluciano.workers.dev
 curl https://ascii-ticker.perezcerraluciano.workers.dev/btc
 curl https://ascii-ticker.perezcerraluciano.workers.dev/help
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,sol"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev?holdings=btc:0.25,eth:2.1"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?charset=ascii"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/sol?format=json"
 ```
@@ -65,6 +67,8 @@ curl "http://localhost:8787/sol?format=json"
 - Help output with `/help`, `/--help`, `/-h`, `?help`, `?--help`, or `?-h`.
 - Short in-memory cache to reduce upstream API calls, with `fresh`/`cached` metadata in responses.
 - Symbol routes like `/btc`, `/eth`, `/sol`, `/usdc`.
+- Custom watchlists with `?assets=btc,eth,sol`.
+- Portfolio totals and 24h P/L with `?holdings=btc:0.25,eth:2.1`.
 - Currency override with `?currency=usd`, `?currency=eur`, etc.
 
 ## API
@@ -74,6 +78,15 @@ Base URL: `https://ascii-ticker.perezcerraluciano.workers.dev`
 ### `GET /`
 
 Returns a terminal-friendly table for the default tracked assets, including 7-day sparklines.
+
+Useful query parameters:
+
+- `?assets=btc,eth,sol`: render a custom watchlist by symbol, CoinGecko id, or exact asset name.
+- `?holdings=btc:0.25,eth:2.1`: render portfolio mode with total value, per-asset value, and 24h P/L.
+- `?currency=eur`: render prices and portfolio values in another currency.
+- `?charset=ascii`: use ASCII-only chart and box characters.
+- `?color=never`: disable ANSI color.
+- `?format=json`: return JSON instead of terminal text.
 
 ### `GET /:asset`
 
@@ -97,6 +110,12 @@ Aliases: `/--help`, `/-h`, `?help`, `?--help`, and `?-h`.
 ### `GET /api/prices`
 
 Returns JSON for the default tracked assets, including `cacheStatus` and sparkline arrays.
+
+Useful query parameters:
+
+- `?assets=btc,eth,sol`: return a custom watchlist.
+- `?holdings=btc:0.25,eth:2.1`: return prices plus a `portfolio` object with positions, total value, and 24h P/L.
+- `?currency=eur`: quote prices and portfolio values in another currency.
 
 ### `GET /api/assets`
 
