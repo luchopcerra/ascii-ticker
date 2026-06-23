@@ -31,6 +31,8 @@ export type PortfolioSummary = {
   change24hValue: number | null;
   change24hPercent: number | null;
   positions: PortfolioPosition[];
+  label?: string;
+  detail?: string;
 };
 
 export function renderHelpTerminal(options: RenderOptions = {}): string {
@@ -46,6 +48,7 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     `${color("Routes", bold, ansi)}`,
     "  /             default tracked asset ticker",
     "  /<asset>      single asset card by symbol, id, or name",
+    "  /wallet/<address>  Ethereum wallet portfolio",
     "  /help         show this help screen",
     "  /api/prices   JSON prices for tracked assets",
     "  /api/assets   supported asset aliases",
@@ -55,6 +58,8 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     "  ?currency=usd       quote currency, for example eur or gbp",
     "  ?assets=btc,eth     custom watchlist for / and /api/prices",
     "  ?holdings=btc:0.25  portfolio mode with asset:amount pairs",
+    "  ?address=0x...      Ethereum wallet portfolio lookup",
+    "  ?chain=ethereum     wallet chain, currently ethereum only",
     "  ?charset=ascii      ASCII-only chart and box characters",
     "  ?color=never        disable ANSI color",
     "  ?format=json        return JSON for price routes",
@@ -64,8 +69,16 @@ export function renderHelpTerminal(options: RenderOptions = {}): string {
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,sol'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev?holdings=btc:0.25,eth:2.1'",
+    "  curl 'ascii-ticker.perezcerraluciano.workers.dev/wallet/0x0000000000000000000000000000000000000000'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev?charset=ascii'",
     "  curl 'ascii-ticker.perezcerraluciano.workers.dev/sol?format=json'",
+    "",
+    `${color("Limitations", bold, ansi)}`,
+    "  Wallet lookup supports Ethereum addresses only",
+    "  Wallet lookup scans ETH, USDC, USDT, and LINK only",
+    "  Wallet lookup requires ETHEREUM_RPC_URL to be configured",
+    "  NFT, LP, staking, lending, and debt positions are not included",
+    "  Prices and sparklines depend on CoinGecko availability",
     "",
     color("Aliases: /help, /--help, /-h, ?help, ?--help, ?-h", dim, ansi)
   ].join("\n");
@@ -158,8 +171,9 @@ export function renderPortfolioTerminal(portfolio: PortfolioSummary, options: Re
   });
 
   return [
-    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color("portfolio", dim, ansi)}`,
+    `${color("ascii-ticker", `${bold}${cyan}`, ansi)} ${color(portfolio.label ?? "portfolio", dim, ansi)}`,
     color(`updated ${now} | data: CoinGecko | cache: ${cacheStatus} (${cacheTtlMs}ms ttl)`, dim, ansi),
+    ...(portfolio.detail ? [color(portfolio.detail, dim, ansi)] : []),
     "",
     [
       color("ASSET", bold, ansi),

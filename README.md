@@ -25,6 +25,7 @@ curl https://ascii-ticker.perezcerraluciano.workers.dev/help
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/eth?currency=eur"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?assets=btc,eth,sol"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?holdings=btc:0.25,eth:2.1"
+curl "https://ascii-ticker.perezcerraluciano.workers.dev/wallet/0x0000000000000000000000000000000000000000"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev?charset=ascii"
 curl "https://ascii-ticker.perezcerraluciano.workers.dev/sol?format=json"
 ```
@@ -69,6 +70,7 @@ curl "http://localhost:8787/sol?format=json"
 - Symbol routes like `/btc`, `/eth`, `/sol`, `/usdc`.
 - Custom watchlists with `?assets=btc,eth,sol`.
 - Portfolio totals and 24h P/L with `?holdings=btc:0.25,eth:2.1`.
+- Ethereum wallet portfolio lookup with `/wallet/<address>` or `?address=0x...`.
 - Currency override with `?currency=usd`, `?currency=eur`, etc.
 
 ## API
@@ -83,6 +85,8 @@ Useful query parameters:
 
 - `?assets=btc,eth,sol`: render a custom watchlist by symbol, CoinGecko id, or exact asset name.
 - `?holdings=btc:0.25,eth:2.1`: render portfolio mode with total value, per-asset value, and 24h P/L.
+- `?address=0x...`: extract supported Ethereum wallet holdings and render portfolio mode.
+- `?chain=ethereum`: wallet chain selector. Ethereum is currently the only supported chain.
 - `?currency=eur`: render prices and portfolio values in another currency.
 - `?charset=ascii`: use ASCII-only chart and box characters.
 - `?color=never`: disable ANSI color.
@@ -107,6 +111,27 @@ Returns terminal-friendly usage help, similar to a CLI `--help` screen.
 
 Aliases: `/--help`, `/-h`, `?help`, `?--help`, and `?-h`.
 
+### `GET /wallet/:address`
+
+Extracts supported Ethereum balances from a wallet address, prices them, and returns the same portfolio view used by `?holdings=...`.
+
+Currently scanned assets:
+
+- Native ETH
+- USDC
+- USDT
+- LINK
+
+This route requires `ETHEREUM_RPC_URL` to be configured as a Worker secret or local `.dev.vars` value. Use a private RPC endpoint from a provider such as Chainstack; do not commit the endpoint URL to source.
+
+Current wallet lookup limitations:
+
+- Ethereum addresses only.
+- Scans only native ETH, USDC, USDT, and LINK.
+- Requires `ETHEREUM_RPC_URL` to be configured.
+- Does not include NFT, LP, staking, lending, or debt positions.
+- Prices and sparklines depend on CoinGecko availability.
+
 ### `GET /api/prices`
 
 Returns JSON for the default tracked assets, including `cacheStatus` and sparkline arrays.
@@ -115,6 +140,7 @@ Useful query parameters:
 
 - `?assets=btc,eth,sol`: return a custom watchlist.
 - `?holdings=btc:0.25,eth:2.1`: return prices plus a `portfolio` object with positions, total value, and 24h P/L.
+- `?address=0x...`: return wallet metadata, prices, and a `portfolio` object for supported Ethereum balances.
 - `?currency=eur`: quote prices and portfolio values in another currency.
 
 ### `GET /api/assets`
@@ -164,6 +190,7 @@ Environment variables:
 
 - `CACHE_TTL_MS`: in-memory cache TTL. Default: `30000`.
 - `COINGECKO_API_URL`: upstream API base URL. Default: `https://api.coingecko.com/api/v3`.
+- `ETHEREUM_RPC_URL`: Ethereum JSON-RPC HTTPS endpoint for wallet balance lookup. Configure it with `npx wrangler secret put ETHEREUM_RPC_URL` for deployed Workers, or `.dev.vars` for local development.
 
 ## Notes
 
