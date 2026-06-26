@@ -12,6 +12,7 @@ import {
 } from "./coingecko.js";
 import { getEthereumWalletHoldings, isEthereumAddress, type WalletEnv } from "./ethereum-wallet.js";
 import { getFinancePrice, isFinanceTickerInput, type SerpapiEnv } from "./serpapi.js";
+import { renderHtmlPage } from "./html.js";
 import {
   renderAssetPlain,
   renderAssetTerminal,
@@ -65,6 +66,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     };
     const body = `${options.ansi ? renderHelpTerminal(options) : renderHelpPlain(options)}\n`;
 
+    if (wantsBrowser(request)) {
+      return new Response(renderHtmlPage("ascii-ticker help", body), { headers: htmlHeaders() });
+    }
+
     return new Response(body, { headers: textHeaders() });
   }
 
@@ -77,7 +82,13 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   }
 
   if (url.pathname === "/install") {
-    return new Response(`${renderInstallSnippet(originBaseUrl(url))}\n`, { headers: textHeaders() });
+    const body = `${renderInstallSnippet(originBaseUrl(url))}\n`;
+
+    if (wantsBrowser(request)) {
+      return new Response(renderHtmlPage("ascii-ticker install", body), { headers: htmlHeaders() });
+    }
+
+    return new Response(body, { headers: textHeaders() });
   }
 
   if (isRootDiscoveryRequest(url)) {
@@ -108,7 +119,13 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     }
 
     const body = options.ansi ? renderDiscoveryTerminal(options) : renderDiscoveryPlain(options);
-    return new Response(`${body}\n`, { headers: textHeaders() });
+    const responseBody = `${body}\n`;
+
+    if (wantsBrowser(request)) {
+      return new Response(renderHtmlPage("ascii-ticker market discovery", responseBody), { headers: htmlHeaders() });
+    }
+
+    return new Response(responseBody, { headers: textHeaders() });
   }
 
   const rangeResult = parseRange(url.searchParams.get("range"));
@@ -127,7 +144,13 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     const body = wantsAnsi(request) && url.searchParams.get("color") !== "never"
       ? renderTrendingTerminal(trending)
       : renderTrendingPlain(trending);
-    return new Response(`${body}\n`, { headers: textHeaders() });
+    const responseBody = `${body}\n`;
+
+    if (wantsBrowser(request)) {
+      return new Response(renderHtmlPage("ascii-ticker trending", responseBody), { headers: htmlHeaders() });
+    }
+
+    return new Response(responseBody, { headers: textHeaders() });
   }
 
   if (url.pathname === "/feed.txt" || url.pathname === "/rss.xml") {
@@ -199,7 +222,13 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     const body = renderOptions.ansi
       ? renderCompareTerminal(prices, renderOptions)
       : renderComparePlain(prices, renderOptions);
-    return new Response(`${body}\n`, { headers: textHeaders() });
+    const responseBody = `${body}\n`;
+
+    if (wantsBrowser(request)) {
+      return new Response(renderHtmlPage("ascii-ticker compare", responseBody), { headers: htmlHeaders() });
+    }
+
+    return new Response(responseBody, { headers: textHeaders() });
   }
 
   if (url.pathname === "/api/prices") {
@@ -251,10 +280,13 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   const dynamicFinanceTicker = assetParam && !asset && isFinanceTickerInput(assetParam) ? assetParam : undefined;
 
   if (assetParam && !asset && !dynamicFinanceTicker) {
-    return new Response(`Unknown asset: ${assetParam}\nTry /btc, /eth, /sol, /aapl, /aapl:nasdaq, /help, or /api/assets\n`, {
-      status: 404,
-      headers: textHeaders()
-    });
+    const body = `Unknown asset: ${assetParam}\nTry /btc, /eth, /sol, /aapl, /aapl:nasdaq, /help, or /api/assets\n`;
+
+    if (wantsBrowser(request)) {
+      return new Response(renderHtmlPage("ascii-ticker - unknown asset", body), { status: 404, headers: htmlHeaders() });
+    }
+
+    return new Response(body, { status: 404, headers: textHeaders() });
   }
 
   const currency = url.searchParams.get("currency") ?? "usd";
@@ -320,6 +352,16 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     : asset
     ? `${renderOptions.ansi ? renderAssetTerminal(prices[0], renderOptions) : renderAssetPlain(prices[0], renderOptions)}\n`
     : `${renderOptions.ansi ? renderTerminal(prices, renderOptions) : renderPlain(prices, renderOptions)}\n`;
+
+  if (wantsBrowser(request)) {
+    const title = portfolio
+      ? "ascii-ticker portfolio"
+      : asset && prices[0]
+      ? `${prices[0].symbol} / ${prices[0].name} - ascii-ticker`
+      : "ascii-ticker market prices";
+
+    return new Response(renderHtmlPage(title, body), { headers: htmlHeaders() });
+  }
 
   return new Response(body, { headers: textHeaders() });
 }
@@ -721,6 +763,11 @@ function wantsAnsi(request: Request): boolean {
   return /curl|httpie|wget/i.test(userAgent);
 }
 
+function wantsBrowser(request: Request): boolean {
+  const ua = request.headers.get("user-agent") ?? "";
+  return /mozilla/i.test(ua) && !/curl|httpie|wget/i.test(ua);
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body, null, 2), {
     status,
@@ -734,6 +781,13 @@ function json(body: unknown, status = 200): Response {
 function textHeaders(): HeadersInit {
   return {
     "content-type": "text/plain; charset=utf-8",
+    "cache-control": "public, max-age=15"
+  };
+}
+
+function htmlHeaders(): HeadersInit {
+  return {
+    "content-type": "text/html; charset=utf-8",
     "cache-control": "public, max-age=15"
   };
 }
