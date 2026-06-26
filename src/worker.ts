@@ -13,6 +13,7 @@ import {
 import { getEthereumWalletHoldings, isEthereumAddress, type WalletEnv } from "./ethereum-wallet.js";
 import { getFinancePrice, isFinanceTickerInput, type SerpapiEnv } from "./serpapi.js";
 import { renderHtmlPage } from "./html.js";
+import { handleWebhook, type XBotEnv } from "./x-bot.js";
 import {
   renderAssetPlain,
   renderAssetTerminal,
@@ -34,7 +35,7 @@ import {
   type RenderOptions
 } from "./render.js";
 
-type Env = PriceEnv & WalletEnv & SerpapiEnv;
+type Env = PriceEnv & WalletEnv & SerpapiEnv & XBotEnv;
 // Avoid division-by-zero when deriving a percent change from tiny sparkline baselines.
 const minPriceBaseline = 1e-10;
 // Heuristic fallback tuning for when optional indicator APIs are not configured:
@@ -71,6 +72,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     }
 
     return new Response(body, { headers: textHeaders() });
+  }
+
+  if (url.pathname === "/x-webhook") {
+    return handleWebhook(request, env);
   }
 
   if (url.pathname === "/health") {
