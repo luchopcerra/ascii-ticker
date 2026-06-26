@@ -1,12 +1,25 @@
 #!/usr/bin/env node
 import { createHmac, randomBytes } from "node:crypto";
 
-// NOTE: must keep URL-encoding — X rejects the decoded form
-const X_BEARER_TOKEN = "__X_BEARER_TOKEN__";
-const X_CONSUMER_KEY = "__X_CONSUMER_KEY__";
-const X_CONSUMER_SECRET = "__X_CONSUMER_SECRET__";
-const X_ACCESS_TOKEN = "__X_ACCESS_TOKEN__";
-const X_ACCESS_TOKEN_SECRET = "__X_ACCESS_TOKEN_SECRET__";
+const required = [
+  "X_BEARER_TOKEN",
+  "X_CONSUMER_KEY",
+  "X_CONSUMER_SECRET",
+  "X_ACCESS_TOKEN",
+  "X_ACCESS_TOKEN_SECRET",
+];
+for (const name of required) {
+  if (!process.env[name]) {
+    console.error(`❌ Missing ${name} in environment`);
+    process.exit(1);
+  }
+}
+
+const X_BEARER_TOKEN = process.env.X_BEARER_TOKEN;
+const X_CONSUMER_KEY = process.env.X_CONSUMER_KEY;
+const X_CONSUMER_SECRET = process.env.X_CONSUMER_SECRET;
+const X_ACCESS_TOKEN = process.env.X_ACCESS_TOKEN;
+const X_ACCESS_TOKEN_SECRET = process.env.X_ACCESS_TOKEN_SECRET;
 
 const WEBHOOK_URL = "https://ascii-ticker.perezcerraluciano.workers.dev/x-webhook";
 

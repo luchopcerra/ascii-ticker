@@ -32,8 +32,8 @@
 ## X Bot (Webhook)
 
 - The webhook endpoint is `GET/POST /x-webhook`. X sends GET for CRC validation and POST for mention events.
-- Secrets deployed via `wrangler secret put`: `X_BEARER_TOKEN`, `X_CONSUMER_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`.
-- Vars in `wrangler.jsonc`: `X_CONSUMER_KEY`, `X_BOT_USER_ID`.
+- All X API credentials deployed via `wrangler secret put`: `X_BEARER_TOKEN`, `X_CONSUMER_KEY`, `X_CONSUMER_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`.
+- Vars in `wrangler.jsonc`: `X_BOT_USER_ID` (only non-secret).
 - `scripts/x-setup.mjs` handles one-time webhook registration + subscription via the X API v2 Account Activity API.
 - X_BEARER_TOKEN must use URL-encoded form (`%2B` for `+`, `%3D` for `=`) because X rejects the decoded value.
 

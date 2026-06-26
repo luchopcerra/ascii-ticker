@@ -11,7 +11,6 @@
     "COINGECKO_API_URL": "https://api.coingecko.com/api/v3",
     "SENTIMENT_API_URL": "",
     "STABLECOIN_FLOW_API_URL": "",
-    "X_CONSUMER_KEY": "__X_CONSUMER_KEY__",
     "X_BOT_USER_ID": "2070505775806447616"
   }
 }
