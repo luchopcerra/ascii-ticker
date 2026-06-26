@@ -78,17 +78,12 @@ async function handleEvent(request: Request, env: XBotEnv): Promise<Response> {
 
   const events = (payload.tweet_create_events ?? []) as TweetEvent[];
   const botUserId = env.X_BOT_USER_ID;
-  console.log("handleEvent: received", events.length, "events");
 
   for (const event of events) {
-    if (!event.text) {
-      console.log("handleEvent: skipping event with no text");
-      continue;
-    }
+    if (!event.text) continue;
 
     const mentions = event.entities?.user_mentions ?? [];
     const isBotMention = mentions.some((m) => m.id_str === botUserId);
-    console.log("handleEvent: text=", event.text, "botMention=", isBotMention, "user=", event.user?.screen_name);
     if (!isBotMention) continue;
 
     if (event.user?.id_str === botUserId) continue;
@@ -96,7 +91,6 @@ async function handleEvent(request: Request, env: XBotEnv): Promise<Response> {
     const tweetId = event.id_str;
     const screenName = event.user?.screen_name;
     const assetInput = extractAsset(event.text);
-    console.log("handleEvent: extracted asset", assetInput);
     if (!assetInput) continue;
 
     try {
@@ -140,14 +134,9 @@ async function processMention(
   env: XBotEnv
 ): Promise<void> {
   const asset = findAsset(symbol);
-  if (!asset) {
-    console.log("processMention: asset not found for", symbol);
-    return;
-  }
+  if (!asset) return;
 
-  console.log("processMention: fetching price for", asset.id);
   const { prices, cacheStatus } = await getPrices({ requestedAssets: [asset], env: env as any });
-  console.log("processMention: got prices", prices.length, "cache", cacheStatus);
   if (prices.length === 0) {
     await postReply(`@${screenName} No price data for ${symbol.toUpperCase()}`, tweetId, env);
     return;
@@ -155,9 +144,7 @@ async function processMention(
 
   const price = prices[0];
   const text = `@${screenName} ${formatReply(price)}`;
-  console.log("processMention: posting reply", text);
   await postReply(text, tweetId, env);
-  console.log("processMention: reply posted successfully");
 }
 
 function formatReply(price: MarketPrice): string {
@@ -206,8 +193,6 @@ async function postReply(text: string, replyToId: string, env: XBotEnv): Promise
     env.X_ACCESS_TOKEN_SECRET
   );
 
-  console.log("postReply: sending", { text, replyToId, authHeader: authHeader.slice(0, 80) + "..." });
-
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -217,11 +202,9 @@ async function postReply(text: string, replyToId: string, env: XBotEnv): Promise
     body
   });
 
-  const resBody = await response.text();
-  console.log("postReply: response", response.status, resBody);
-
   if (!response.ok) {
-    throw new Error(`X API ${response.status}: ${resBody}`);
+    const errBody = await response.text();
+    throw new Error(`X API ${response.status}: ${errBody}`);
   }
 }
 
