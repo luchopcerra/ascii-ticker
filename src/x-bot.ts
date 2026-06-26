@@ -97,7 +97,7 @@ async function handleEvent(request: Request, env: XBotEnv): Promise<Response> {
       await processMention(assetInput, tweetId, screenName, env);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      await postReply(`@${screenName} Error: ${msg}`, tweetId, env).catch(() => {});
+      await postReply(`Error: ${msg}`, tweetId, env).catch(() => {});
     }
   }
 
@@ -138,13 +138,13 @@ async function processMention(
 
   const { prices, cacheStatus } = await getPrices({ requestedAssets: [asset], env: env as any });
   if (prices.length === 0) {
-    await postReply(`@${screenName} No price data for ${symbol.toUpperCase()}`, tweetId, env);
+    // X auto-prepends the replied-to user's @mention
+    await postReply(`No price data for ${symbol.toUpperCase()}`, tweetId, env);
     return;
   }
 
   const price = prices[0];
-  const text = `@${screenName} ${formatReply(price)}`;
-  await postReply(text, tweetId, env);
+  await postReply(formatReply(price), tweetId, env);
 }
 
 function formatReply(price: MarketPrice): string {
