@@ -145,10 +145,26 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     });
 
     if (url.pathname === "/rss.xml") {
+      const lastModified = prices.reduce((latest, price) => {
+        if (!price.updatedAt) return latest;
+        const d = new Date(price.updatedAt).getTime();
+        return d > latest ? d : latest;
+      }, 0);
+
+      const ifModifiedSince = request.headers.get("if-modified-since");
+      if (ifModifiedSince && lastModified > 0) {
+        const sinceTime = new Date(ifModifiedSince).getTime();
+        if (!isNaN(sinceTime) && sinceTime >= lastModified) {
+          return new Response(null, { status: 304 });
+        }
+      }
+
+      const lastModifiedHeader = lastModified > 0 ? new Date(lastModified).toUTCString() : new Date().toUTCString();
       return new Response(renderRssFeed(prices, url), {
         headers: {
           "content-type": "application/rss+xml; charset=utf-8",
-          "cache-control": "public, max-age=15"
+          "cache-control": "public, max-age=3600",
+          "last-modified": lastModifiedHeader
         }
       });
     }
@@ -441,13 +457,14 @@ function renderRssFeed(prices: MarketPrice[], url: URL): string {
     .map((price) => {
       const title = `${price.symbol} ${formatFeedMoney(price.price, price.currency)} (${formatFeedPercent(price.change24h)} 24h)`;
       const description = `${price.name} price ${formatFeedMoney(price.price, price.currency)}, 24h ${formatFeedPercent(price.change24h)}, volume ${formatFeedCompact(price.volume24h)}, market cap ${formatFeedCompact(price.marketCap)}.`;
+      const pubDate = price.updatedAt ? new Date(price.updatedAt).toUTCString() : updatedAt;
 
       return [
         "    <item>",
         `      <title>${escapeXml(title)}</title>`,
         `      <link>${escapeXml(`${url.origin}/${price.symbol.toLowerCase()}`)}</link>`,
-        `      <guid isPermaLink="false">${escapeXml(`${price.id}:${price.updatedAt}`)}</guid>`,
-        `      <pubDate>${updatedAt}</pubDate>`,
+        `      <guid isPermaLink="false">${escapeXml(price.id)}</guid>`,
+        `      <pubDate>${pubDate}</pubDate>`,
         `      <description>${escapeXml(description)}</description>`,
         "    </item>"
       ].join("\n");
@@ -462,6 +479,7 @@ function renderRssFeed(prices: MarketPrice[], url: URL): string {
     `    <link>${escapeXml(url.origin)}</link>`,
     "    <description>Terminal-first market price feed</description>",
     `    <lastBuildDate>${updatedAt}</lastBuildDate>`,
+    "    <ttl>60</ttl>",
     items,
     "  </channel>",
     "</rss>"
