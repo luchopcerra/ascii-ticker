@@ -10,14 +10,14 @@
 
 - Install: `npm install`
 - Local dev: `npm run dev` (`wrangler dev`; local URL is usually `http://localhost:8787`, not `3000`).
-- Typecheck/build: `npm run check` and `npm run build`.
+- Typecheck/test/build: `npm run check`, `npm test -- --run`, and `npm run build`.
 - Deploy dry run: `npx wrangler deploy --dry-run`.
 - Deploy for real: `npm run deploy` after Cloudflare auth (`npx wrangler login`).
 - Manage secrets: `npx wrangler secret put <NAME>`.
 
 ## Verification
 
-- There is no test suite yet; use `npm run check` plus `npx wrangler deploy --dry-run` as the baseline verification.
+- Baseline verification is `npm run check`, `npm test -- --run`, `npm run build`, and `npx wrangler deploy --dry-run`.
 - For a focused smoke test, run `npm run dev` and hit `curl "http://localhost:8787/btc?format=json"`.
 - The app fetches live CoinGecko data, so smoke tests depend on network access and upstream API availability.
 

@@ -23,7 +23,7 @@ jobs:
         run: npm ci
 
       - name: Verify project
-        run: npm run check && npm run build
+        run: npm run check && npm test -- --run && npm run build
 
       - name: Deploy to Cloudflare Workers with Wrangler
         run: npx wrangler deploy

@@ -229,6 +229,8 @@ Returns a simple health check.
 
 ```sh
 npm install
+npm run check
+npm test -- --run
 npm run dev
 ```
 
@@ -241,6 +243,15 @@ curl "http://localhost:8787?assets=btc,eth,spy,qqq"
 ```
 
 Wrangler will print the local URL, usually `http://localhost:8787`.
+
+Baseline verification before deploys or behavior changes:
+
+```sh
+npm run check
+npm test -- --run
+npm run build
+npx wrangler deploy --dry-run
+```
 
 ## Manual deploy to Cloudflare Workers
 
@@ -262,8 +273,8 @@ integration:
 - updates to `main` deploy production
 
 `.github/workflows/deploy.yml` is a manual Wrangler fallback. It still runs
-`npm run check` and `npm run build` before deploying, but it is not the default
-production path.
+`npm run check`, `npm test -- --run`, and `npm run build` before deploying, but
+it is not the default production path.
 
 Configure these repository secrets first if you want the manual fallback
 workflow to deploy:
