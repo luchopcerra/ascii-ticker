@@ -242,20 +242,31 @@ curl "http://localhost:8787?assets=btc,eth,spy,qqq"
 
 Wrangler will print the local URL, usually `http://localhost:8787`.
 
-## Deploy to Cloudflare Workers
+## Manual deploy to Cloudflare Workers
 
 ```sh
 npx wrangler login
 npm run deploy
 ```
 
-After deploy, Cloudflare will print the public Worker URL.
+After deploy, Cloudflare will print the public Worker URL. Use this as a
+manual fallback when you intentionally need Wrangler to deploy outside the
+linked Git flow below.
 
-## Automatic deploys from GitHub
+## Cloudflare-linked deploys from GitHub
 
-Merges to `main` trigger `.github/workflows/deploy.yml`, which installs dependencies, runs `npm run check` and `npm run build`, then deploys with Wrangler.
+This repository is linked to Cloudflare Workers through the Cloudflare GitHub
+integration:
 
-Configure these repository secrets first so the workflow can deploy:
+- pull requests get Cloudflare preview deployments
+- updates to `main` deploy production
+
+`.github/workflows/deploy.yml` is a manual Wrangler fallback. It still runs
+`npm run check` and `npm run build` before deploying, but it is not the default
+production path.
+
+Configure these repository secrets first if you want the manual fallback
+workflow to deploy:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
